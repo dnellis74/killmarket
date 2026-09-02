@@ -22,7 +22,7 @@ function startGame() {
     width,
     height,
     parent: 'map-pane',
-    backgroundColor: '#444444',
+    backgroundColor: '#2a1408',
     scene: [MapScene],
     scale: {
       mode: Phaser.Scale.RESIZE,

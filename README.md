@@ -66,9 +66,9 @@ Edit `src/config.js`:
 | `gridSize` | 100 | Grid cells per axis (10 mi × 10 mi) |
 | `cellSizeMiles` | 0.1 | Miles per grid cell |
 | `mapSizeMiles` | 10 | Map extent in miles |
-| `detectionRadiusMiles` | 3 | Drone sensor scan range (also clears fog on arrival) |
-| `initialRevealRadiusMiles` | 1 | Fog cleared around artillery at game start |
-| `visualRangeMiles` | 1 | Fog cleared along drone travel path |
+| `detectionRadiusMiles` | 1.5 | Drone sensor scan range (also clears fog on arrival) |
+| `initialRevealRadiusMiles` | 0.5 | Fog cleared around artillery at game start |
+| `visualRangeMiles` | 0.25 | Direct line of sight / fog cleared along drone travel path |
 | `droneTravelDurationMs` | 2000 | Round-trip travel time (each leg = half) |
 | `muzzleVelocity` | 800 | m/s, used in elevation formula |
 | `gravity` | 9.8 | m/s² |

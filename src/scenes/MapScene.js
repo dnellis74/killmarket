@@ -17,6 +17,7 @@ import {
   markTargetHitAtCell,
   confirmKillViaSensor,
   checkMissionComplete,
+  checkBankruptcy,
   findTargetAtCell,
   isVictory,
   revealTargetVisually,
@@ -108,11 +109,19 @@ export default class MapScene extends Phaser.Scene {
     this.messageHideTimer = null;
   }
 
+  preload() {
+    this.load.image(CONFIG.backdropKey, CONFIG.backdropUrl);
+  }
+
   create() {
     initGameState();
     trackGameStart();
     this.deployedSensors = [];
-    this.drawGrid();
+    this.add
+      .image(WORLD_SIZE / 2, WORLD_SIZE / 2, CONFIG.backdropKey)
+      .setDisplaySize(WORLD_SIZE, WORLD_SIZE)
+      .setDepth(0);
+    this.drawGridOverlay();
     this.fogGraphics = this.add.graphics().setDepth(6);
     this.drawFog();
     this.createPlayer();
@@ -134,7 +143,10 @@ export default class MapScene extends Phaser.Scene {
       .setVisible(false);
 
     this.layoutMapOverlay();
-    this.scale.on('resize', this.layoutMapOverlay, this);
+    this.scale.on('resize', () => {
+      this.layoutMapOverlay();
+      this.fitCameraToMap();
+    });
 
     this.updateActionUI();
     this.updateUI();
@@ -144,15 +156,16 @@ export default class MapScene extends Phaser.Scene {
     }
   }
 
-  drawGrid() {
-    const graphics = this.add.graphics();
-    graphics.fillStyle(0x888888, 1);
-    graphics.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
-
-    graphics.lineStyle(1, 0x666666, 0.6);
-    for (let i = 0; i <= gridSize; i++) {
-      const pos = i * cellPx;
+  drawGridOverlay() {
+    const graphics = this.add.graphics().setDepth(1);
+    graphics.lineStyle(1, 0xffffff, 0.08);
+    const step = 16;
+    for (let x = 0; x <= gridSize; x += step) {
+      const pos = x * cellPx;
       graphics.lineBetween(pos, 0, pos, WORLD_SIZE);
+    }
+    for (let y = 0; y <= gridSize; y += step) {
+      const pos = y * cellPx;
       graphics.lineBetween(0, pos, WORLD_SIZE, pos);
     }
   }
@@ -243,15 +256,26 @@ export default class MapScene extends Phaser.Scene {
   setupCamera() {
     const cam = this.cameras.main;
     cam.setBounds(0, 0, WORLD_SIZE, WORLD_SIZE);
-
-    const state = getState();
-    const playerPos = cellToWorld(state.playerCell);
-    cam.centerOn(playerPos.x, playerPos.y);
-    cam.setZoom(1);
+    this.fitCameraToMap();
 
     this.isDragging = false;
     this.dragStart = { x: 0, y: 0 };
     this.camStart = { x: 0, y: 0 };
+  }
+
+  getMinZoom() {
+    const cam = this.cameras.main;
+    return Math.min(cam.width / WORLD_SIZE, cam.height / WORLD_SIZE);
+  }
+
+  fitCameraToMap() {
+    const cam = this.cameras.main;
+    cam.setZoom(this.getMinZoom());
+    cam.centerOn(WORLD_SIZE / 2, WORLD_SIZE / 2);
+  }
+
+  clampZoom(zoom) {
+    return Phaser.Math.Clamp(zoom, this.getMinZoom(), 4);
   }
 
   setupInput() {
@@ -259,7 +283,7 @@ export default class MapScene extends Phaser.Scene {
 
     this.input.on('wheel', (pointer, _gameObjects, _deltaX, deltaY) => {
       const zoomFactor = deltaY > 0 ? 0.9 : 1.1;
-      const newZoom = Phaser.Math.Clamp(cam.zoom * zoomFactor, 0.3, 4);
+      const newZoom = this.clampZoom(cam.zoom * zoomFactor);
       cam.setZoom(newZoom);
     });
 
@@ -299,7 +323,7 @@ export default class MapScene extends Phaser.Scene {
 
         if (this.lastPinchDistance !== null) {
           const scale = dist / this.lastPinchDistance;
-          const newZoom = Phaser.Math.Clamp(cam.zoom * scale, 0.3, 4);
+          const newZoom = this.clampZoom(cam.zoom * scale);
           cam.setZoom(newZoom);
         }
         this.lastPinchDistance = dist;
@@ -631,6 +655,9 @@ export default class MapScene extends Phaser.Scene {
         this.activeDroneSprites.delete(drone.id);
         updateDrone(drone.id, { status: 'complete' });
         this.isDeployingDrone = false;
+        if (!getState().missionCompleteReported) {
+          checkBankruptcy();
+        }
         this.updateUI();
       },
     });
@@ -727,6 +754,7 @@ export default class MapScene extends Phaser.Scene {
     if (!elevationResult.valid) {
       this.showMessage(elevationResult.message);
       this.isAnimatingFire = false;
+      checkBankruptcy();
       this.updateUI();
       return;
     }
@@ -826,6 +854,8 @@ export default class MapScene extends Phaser.Scene {
         if (missionComplete) {
           trackMissionComplete(getScore());
           message += ' All targets destroyed — mission complete!';
+        } else {
+          checkBankruptcy();
         }
         this.showMessage(message, missionComplete ? 8000 : 4000);
         this.isAnimatingFire = false;

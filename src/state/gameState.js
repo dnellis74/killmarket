@@ -109,11 +109,19 @@ export function updateDrone(id, updates) {
 export function spendMoney(amount = CONFIG.actionCost) {
   if (state.money < amount) return false;
   state.money -= amount;
+  if (state.money < 0) state.money = 0;
+  return true;
+}
+
+/** Broke after an action finishes — not when the last dollar is spent mid-mission. */
+export function checkBankruptcy() {
+  if (state.missionCompleteReported) return false;
   if (state.money <= 0) {
     state.money = 0;
     state.gameOver = true;
+    return true;
   }
-  return true;
+  return false;
 }
 
 export function getBearingReadings() {
