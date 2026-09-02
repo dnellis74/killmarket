@@ -3,11 +3,63 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#1a1a24" />
     <title>Killmarket — Artillery Targeting</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="shell">
+      <div id="map-pane"></div>
+      <div id="controls-pane">
+        <div id="game-ui" class="ui-panel">
+          <header class="ui-header">
+            <h1>Killmarket</h1>
+            <div class="stats-row">
+              <span id="energy-display">Energy 100</span>
+              <span id="score-display">Score 0</span>
+            </div>
+          </header>
+
+          <div id="mission-complete" class="mission-complete hidden">
+            Mission complete — all targets destroyed
+          </div>
+
+          <p id="status-display" class="status-display">
+            Select a sensor drone, then tap the map to deploy.
+          </p>
+
+          <div class="action-grid">
+            <button id="btn-bearing" class="drone-btn" type="button">
+              <span class="btn-label">Bearing</span>
+              <span class="btn-cost">10 energy</span>
+            </button>
+            <button id="btn-distance" class="drone-btn" type="button">
+              <span class="btn-label">Distance</span>
+              <span class="btn-cost">10 energy</span>
+            </button>
+            <button id="btn-fire" class="fire-btn" type="button" disabled>
+              <span class="btn-label">Fire Mission</span>
+              <span class="btn-cost">10 energy</span>
+            </button>
+          </div>
+
+          <section id="readings-panel" class="readings-panel">
+            <h2>Sensor Readings</h2>
+            <ul id="readings-list"></ul>
+          </section>
+
+          <div id="game-over" class="game-over hidden">
+            <h2 id="game-over-title">Game Over</h2>
+            <p id="game-over-message">Energy depleted. Target locations revealed on map.</p>
+            <button id="btn-restart" type="button">Restart</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

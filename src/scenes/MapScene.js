@@ -48,6 +48,7 @@ function ui(id) {
 }
 
 export default class MapScene extends Phaser.Scene {
+  static uiBound = false;
   constructor() {
     super('MapScene');
     this.selectedDroneType = null;
@@ -65,18 +66,22 @@ export default class MapScene extends Phaser.Scene {
     this.createPlayer();
     this.setupCamera();
     this.setupInput();
-    this.createUI();
+    this.setupUI();
     this.readingGraphics = this.add.graphics().setDepth(5);
     this.messageText = this.add
-      .text(10, 10, '', {
-        fontSize: '14px',
+      .text(8, 0, '', {
+        fontSize: '13px',
         color: '#ffffff',
-        backgroundColor: '#000000aa',
-        padding: { x: 8, y: 4 },
+        backgroundColor: '#000000cc',
+        padding: { x: 8, y: 5 },
       })
+      .setOrigin(0, 1)
       .setScrollFactor(0)
       .setDepth(100)
       .setVisible(false);
+
+    this.layoutMapOverlay();
+    this.scale.on('resize', this.layoutMapOverlay, this);
 
     this.updateUI();
 
@@ -151,7 +156,6 @@ export default class MapScene extends Phaser.Scene {
 
     this.input.on('pointerdown', (pointer) => {
       if (pointer.rightButtonDown()) return;
-      if (this.isUIHit(pointer)) return;
 
       if (!this.isDeployingDrone && !this.isAnimatingFire) {
         const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
@@ -204,50 +208,24 @@ export default class MapScene extends Phaser.Scene {
     });
   }
 
-  isUIHit(pointer) {
-    const el = document.elementFromPoint(pointer.x, pointer.y);
-    return el && el.closest('#game-ui');
+  layoutMapOverlay() {
+    if (this.messageText) {
+      this.messageText.setPosition(8, this.scale.height - 8);
+    }
   }
 
-  isValidCell(cell) {
-    return cell.x >= 0 && cell.x < gridSize && cell.y >= 0 && cell.y < gridSize;
-  }
-
-  createUI() {
-    const existing = document.getElementById('game-ui');
-    if (existing) existing.remove();
-
-    const uiRoot = document.createElement('div');
-    uiRoot.id = 'game-ui';
-    uiRoot.innerHTML = `
-      <div class="ui-panel">
-        <h2>Artillery Targeting</h2>
-        <div id="energy-display">Energy: 100</div>
-        <div id="score-display">Score: 0</div>
-        <div id="mission-complete" class="mission-complete hidden">Mission complete — all targets destroyed</div>
-        <div id="status-display">Select a sensor drone type, then click the map to deploy.</div>
-        <div class="button-row">
-          <button id="btn-bearing" class="drone-btn">Deploy Bearing Drone (10)</button>
-          <button id="btn-distance" class="drone-btn">Deploy Distance Drone (10)</button>
-        </div>
-        <button id="btn-fire" class="fire-btn" disabled>Fire Mission (10)</button>
-        <div id="readings-panel">
-          <h3>Sensor Readings</h3>
-          <ul id="readings-list"></ul>
-        </div>
-        <div id="game-over" class="game-over hidden">
-          <h2 id="game-over-title">Game Over</h2>
-          <p id="game-over-message">Energy depleted. Target locations revealed on map.</p>
-          <button id="btn-restart">Restart</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(uiRoot);
+  setupUI() {
+    if (MapScene.uiBound) return;
+    MapScene.uiBound = true;
 
     ui('btn-bearing').addEventListener('click', () => this.selectDroneType('bearing'));
     ui('btn-distance').addEventListener('click', () => this.selectDroneType('distance'));
     ui('btn-fire').addEventListener('click', () => this.toggleFireMode());
     ui('btn-restart').addEventListener('click', () => this.scene.restart());
+  }
+
+  isValidCell(cell) {
+    return cell.x >= 0 && cell.x < gridSize && cell.y >= 0 && cell.y < gridSize;
   }
 
   selectDroneType(type) {
@@ -283,11 +261,11 @@ export default class MapScene extends Phaser.Scene {
   updateStatusDisplay() {
     const status = ui('status-display');
     if (this.fireMode) {
-      status.textContent = 'Fire mode: click the map to aim and fire.';
+      status.textContent = 'Fire mode: tap the map to aim and fire.';
     } else if (this.selectedDroneType) {
-      status.textContent = `Selected: ${this.selectedDroneType} drone. Click a grid cell to deploy.`;
+      status.textContent = `Selected: ${this.selectedDroneType} drone. Tap the map to deploy.`;
     } else {
-      status.textContent = 'Select a sensor drone type, then click the map to deploy.';
+      status.textContent = 'Select a sensor drone, then tap the map to deploy.';
     }
   }
 
@@ -585,8 +563,8 @@ export default class MapScene extends Phaser.Scene {
 
   updateUI() {
     const state = getState();
-    ui('energy-display').textContent = `Energy: ${state.energy}`;
-    ui('score-display').textContent = `Score: ${getScore()}`;
+    ui('energy-display').textContent = `Energy ${state.energy}`;
+    ui('score-display').textContent = `Score ${getScore()}`;
 
     const missionEl = ui('mission-complete');
     if (state.missionCompleteReported) {

@@ -4,102 +4,171 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+}
+
 body {
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #222;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #0a0a0f;
+  color: #eee;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Phone-first shell; centered column on wider screens */
+#shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  background: #111;
+}
+
+@media (min-width: 481px) {
+  body {
+    background: #0a0a0f;
+  }
+
+  #shell {
+    box-shadow: 0 0 48px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* Top half — map */
+#map-pane {
+  flex: 1 1 50%;
+  min-height: 0;
+  position: relative;
+  background: #444;
   overflow: hidden;
 }
 
-#app {
-  width: 100vw;
-  height: 100vh;
+#map-pane canvas {
+  display: block;
+  touch-action: none;
 }
 
-#game-ui {
-  position: fixed;
-  top: 12px;
-  right: 12px;
-  z-index: 1000;
-  pointer-events: auto;
+/* Bottom half — controls */
+#controls-pane {
+  flex: 1 1 50%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a24;
+  border-top: 2px solid #333;
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 .ui-panel {
-  background: rgba(20, 20, 30, 0.92);
-  color: #eee;
-  padding: 16px;
-  border-radius: 8px;
-  width: 280px;
-  border: 1px solid #444;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 14px;
+  padding-left: max(14px, env(safe-area-inset-left));
+  padding-right: max(14px, env(safe-area-inset-right));
+  position: relative;
 }
 
-.ui-panel h2 {
-  font-size: 16px;
-  margin-bottom: 8px;
+.ui-header {
+  margin-bottom: 10px;
+}
+
+.ui-header h1 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: #ffcc00;
+  margin-bottom: 6px;
 }
 
-.ui-panel h3 {
-  font-size: 13px;
-  margin: 12px 0 6px;
-  color: #aaa;
+.stats-row {
+  display: flex;
+  gap: 10px;
+}
+
+.stats-row span {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-align: center;
 }
 
 #energy-display {
-  font-size: 18px;
-  font-weight: bold;
-  color: #00ccff;
-  margin-bottom: 8px;
+  background: rgba(0, 120, 180, 0.25);
+  color: #5dd4ff;
+  border: 1px solid rgba(0, 180, 255, 0.35);
 }
 
 #score-display {
-  font-size: 16px;
-  font-weight: bold;
+  background: rgba(180, 120, 0, 0.2);
   color: #ffcc00;
-  margin-bottom: 8px;
+  border: 1px solid rgba(255, 200, 0, 0.35);
 }
 
 .mission-complete {
-  font-size: 13px;
-  font-weight: bold;
+  font-size: 12px;
+  font-weight: 700;
   color: #44ff88;
-  background: rgba(0, 80, 40, 0.5);
+  background: rgba(0, 80, 40, 0.45);
   border: 1px solid #44ff88;
-  border-radius: 4px;
-  padding: 6px 8px;
+  border-radius: 8px;
+  padding: 8px 10px;
   margin-bottom: 8px;
+  text-align: center;
 }
 
 .mission-complete.hidden {
   display: none;
 }
 
-#status-display {
-  font-size: 12px;
-  color: #aaa;
-  margin-bottom: 12px;
+.status-display {
+  font-size: 13px;
   line-height: 1.4;
+  color: #aaa;
+  margin-bottom: 10px;
 }
 
-.button-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.fire-btn {
+  grid-column: 1 / -1;
 }
 
 button {
   cursor: pointer;
   border: 1px solid #555;
-  border-radius: 4px;
-  padding: 8px 12px;
-  font-size: 13px;
-  background: #333;
+  border-radius: 10px;
+  padding: 12px 10px;
+  min-height: 48px;
+  font-size: 14px;
+  background: #2a2a36;
   color: #eee;
-  transition: background 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  transition: background 0.15s, border-color 0.15s;
 }
 
-button:hover:not(:disabled) {
-  background: #444;
+button:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 button:disabled {
@@ -107,49 +176,84 @@ button:disabled {
   cursor: not-allowed;
 }
 
-button.active {
-  background: #005588;
+.btn-label {
+  font-weight: 600;
+}
+
+.btn-cost {
+  font-size: 11px;
+  color: #888;
+}
+
+.drone-btn.active {
+  background: #004466;
   border-color: #00aaff;
 }
 
-.fire-btn {
-  width: 100%;
-  background: #662200;
-  border-color: #cc4400;
-  font-weight: bold;
-  margin-bottom: 8px;
+.drone-btn.active .btn-cost {
+  color: #88ccff;
 }
 
-.fire-btn:hover:not(:disabled) {
-  background: #883300;
+.fire-btn {
+  background: #4a2200;
+  border-color: #cc5500;
 }
 
 .fire-btn.active {
-  background: #aa4400;
+  background: #773300;
   border-color: #ff8800;
+}
+
+.readings-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.readings-panel h2 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #777;
+  margin-bottom: 6px;
 }
 
 #readings-list {
   list-style: none;
   font-size: 12px;
-  max-height: 120px;
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 #readings-list li {
-  padding: 3px 0;
-  border-bottom: 1px solid #333;
+  padding: 6px 0;
+  border-bottom: 1px solid #2a2a36;
+  line-height: 1.35;
+}
+
+#readings-list li:last-child {
+  border-bottom: none;
 }
 
 .game-over {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(8, 8, 14, 0.94);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+  z-index: 10;
 }
 
 .game-over.hidden {
@@ -157,8 +261,9 @@ button.active {
 }
 
 .game-over h2 {
+  font-size: 22px;
   color: #ff4444;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .game-over.victory h2 {
@@ -166,6 +271,15 @@ button.active {
 }
 
 .game-over p {
-  margin-bottom: 12px;
   font-size: 14px;
+  line-height: 1.5;
+  color: #bbb;
+  margin-bottom: 16px;
+  max-width: 280px;
+}
+
+#btn-restart {
+  min-width: 140px;
+  flex-direction: row;
+  font-weight: 700;
 }
