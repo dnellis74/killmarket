@@ -5,6 +5,7 @@ const BEARING_SWEEP_RATE = 0.045; // degrees per ms
 const BEARING_CYCLE_MS = 360 / BEARING_SWEEP_RATE;
 const RANGE_CYCLE_MS = 2600;
 const PING_ZONE_BEARING_DEG = 10;
+export const MAX_CYCLES_WITHOUT_CONTACT = 4;
 
 function angleDiff(a, b) {
   let d = Math.abs(a - b) % 360;
@@ -27,6 +28,9 @@ export function createDeployedSensor(type, cell, readingValue = null) {
     ringPhase: 0,
     pulseGlow: 0,
     wasInPingZone: false,
+    elapsedMs: 0,
+    markedForRetrieval: false,
+    retrievalStarted: false,
     /** @type {{ fade: number }[]} */
     traces: [],
   };
@@ -79,6 +83,14 @@ export function updateDeployedSensors(sensors, delta) {
     sensor.traces = sensor.traces.filter((t) => t.fade > 0);
 
     sensor.pulseGlow = Math.max(0, sensor.pulseGlow - delta * 0.0015);
+
+    if (sensor.readingValue == null && !sensor.markedForRetrieval) {
+      sensor.elapsedMs += delta;
+      const cycles = Math.floor(sensor.elapsedMs / cycleMs);
+      if (cycles >= MAX_CYCLES_WITHOUT_CONTACT) {
+        sensor.markedForRetrieval = true;
+      }
+    }
   }
 }
 
@@ -94,6 +106,8 @@ export function drawDeployedSensors(g, sensors, cellPx, degreesToRadians) {
   const maxRadiusPx = CONFIG.detectionRadiusMiles * milesToPx;
 
   for (const sensor of sensors) {
+    if (sensor.retrievalStarted) continue;
+
     const pos = cellToWorld(sensor.cell);
     const isBearing = sensor.type === 'bearing';
     const baseColor = isBearing ? 0xffcc00 : 0x00ff88;

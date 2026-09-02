@@ -654,14 +654,56 @@ export default class MapScene extends Phaser.Scene {
   }
 
   update(_time, delta) {
-    if (this.deployedSensors.length === 0) return;
-    updateDeployedSensors(this.deployedSensors, delta);
-    drawDeployedSensors(
-      this.deployedSensorGraphics,
-      this.deployedSensors,
-      cellPx,
-      degreesToRadians
-    );
+    if (this.deployedSensors.length > 0) {
+      updateDeployedSensors(this.deployedSensors, delta);
+
+      for (const sensor of this.deployedSensors) {
+        if (sensor.markedForRetrieval && !sensor.retrievalStarted) {
+          this.startSensorRetrieval(sensor);
+        }
+      }
+
+      drawDeployedSensors(
+        this.deployedSensorGraphics,
+        this.deployedSensors,
+        cellPx,
+        degreesToRadians
+      );
+    } else if (this.deployedSensorGraphics) {
+      this.deployedSensorGraphics.clear();
+    }
+  }
+
+  startSensorRetrieval(sensor) {
+    sensor.retrievalStarted = true;
+    const playerPos = cellToWorld(getState().playerCell);
+    const sensorPos = cellToWorld(sensor.cell);
+    const legDuration = CONFIG.droneTravelDurationMs / 4;
+
+    const sprite = this.add.circle(playerPos.x, playerPos.y, cellPx * 0.3, 0x00aaff);
+    sprite.setStrokeStyle(1, 0xffffff);
+    sprite.setDepth(9);
+
+    this.tweens.add({
+      targets: sprite,
+      x: sensorPos.x,
+      y: sensorPos.y,
+      duration: legDuration,
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        const idx = this.deployedSensors.indexOf(sensor);
+        if (idx >= 0) this.deployedSensors.splice(idx, 1);
+
+        this.tweens.add({
+          targets: sprite,
+          x: playerPos.x,
+          y: playerPos.y,
+          duration: legDuration,
+          ease: 'Sine.easeInOut',
+          onComplete: () => sprite.destroy(),
+        });
+      },
+    });
   }
 
   executeFireAtCell(aimCell) {
