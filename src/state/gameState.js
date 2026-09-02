@@ -23,11 +23,12 @@ function randomDistinctCells(count, gridSize) {
   return cells;
 }
 
-function createTarget(cell) {
+function createTarget(cell, contract) {
   return {
     id: generateId(),
     cell: { ...cell },
-    contractValue: CONFIG.contractValue,
+    contractValue: contract.value,
+    verificationRequired: contract.verificationRequired,
     contractStatus: 'active',
     effectiveness: null,
     killConfirmed: false,
@@ -37,12 +38,13 @@ function createTarget(cell) {
 
 export function initGameState() {
   nextId = 1;
-  const targetCells = randomDistinctCells(CONFIG.targetCount, CONFIG.gridSize);
+  const contracts = CONFIG.contracts;
+  const targetCells = randomDistinctCells(contracts.length, CONFIG.gridSize);
   state = {
     money: CONFIG.startingMoney,
     readings: [],
     drones: [],
-    targets: targetCells.map((cell) => createTarget(cell)),
+    targets: targetCells.map((cell, i) => createTarget(cell, contracts[i])),
     playerCell: { ...CONFIG.playerCell },
     revealedCells: initRevealedCells(
       CONFIG.playerCell,
@@ -154,31 +156,39 @@ export function createDrone(type, targetCell) {
   };
 }
 
-/** Apply kinetic effect — does not confirm kill or award score. */
+/** Apply kinetic effect — marks target destroyed; pays contract if none required. */
 export function markTargetHitAtCell(aimCell) {
   const target = findTargetAtCell(aimCell);
-  if (!target) return null;
+  if (!target) return { target: null, contractPaid: false };
   target.effectiveness = EFFECTIVENESS.COMBAT_INEFFECTIVE;
-  return target;
+  const contractPaid =
+    !target.verificationRequired && awardContractPayout(target);
+  return { target, contractPaid };
 }
 
-/**
- * Sensor confirms a destroyed unit — pays out contract once per target.
- * @returns {boolean} true if contract payout was awarded
- */
-export function confirmKillViaSensor(target) {
-  if (
-    target.effectiveness !== EFFECTIVENESS.COMBAT_INEFFECTIVE ||
-    target.killConfirmed
-  ) {
-    return false;
-  }
+function awardContractPayout(target) {
+  if (target.killConfirmed) return false;
   target.killConfirmed = true;
   target.contractStatus = 'paid';
   const payout = target.contractValue;
   state.score += payout;
   state.money += payout;
   return true;
+}
+
+/**
+ * Sensor confirms a destroyed unit — pays out when contract requires verification.
+ * @returns {boolean} true if contract payout was awarded
+ */
+export function confirmKillViaSensor(target) {
+  if (!target.verificationRequired) return false;
+  if (
+    target.effectiveness !== EFFECTIVENESS.COMBAT_INEFFECTIVE ||
+    target.killConfirmed
+  ) {
+    return false;
+  }
+  return awardContractPayout(target);
 }
 
 export function getScore() {

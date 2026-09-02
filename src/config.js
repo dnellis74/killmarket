@@ -2,7 +2,11 @@
 export const CONFIG = {
   startingMoney: 1000000,
   actionCost: 100000,
-  contractValue: 500000,
+  /** Demo level — each entry is a contract tied to a hidden target. */
+  contracts: [
+    { value: 500000, verificationRequired: false },
+    { value: 500000, verificationRequired: false },
+  ],
   gridSize: 100,
   cellSizeMiles: 0.1,
   mapSizeMiles: 10,
@@ -14,6 +18,5 @@ export const CONFIG = {
   gravity: 9.8,
   milesToMeters: 1609.34,
   playerCell: { x: 10, y: 50 },
-  targetCount: 2,
   cellPx: 10,
 };

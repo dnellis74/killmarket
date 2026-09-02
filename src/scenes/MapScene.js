@@ -756,12 +756,25 @@ export default class MapScene extends Phaser.Scene {
         });
         projectile.destroy();
 
+        let message = 'Fire mission complete.';
         if (isHit) {
-          markTargetHitAtCell(aimCell);
+          const { target, contractPaid } = markTargetHitAtCell(aimCell);
+          if (contractPaid && target) {
+            addReading(
+              createReading('contract', target.contractValue, aimCell, target.id)
+            );
+            trackKillConfirmed(target.contractValue);
+            message += ` ${formatMoney(target.contractValue)} contract awarded.`;
+          }
         }
         addReading(createReading('fire', 0, aimCell));
         trackFireMissionComplete(aimCell, isHit);
-        this.showMessage('Fire mission complete.');
+        const missionComplete = checkMissionComplete();
+        if (missionComplete) {
+          trackMissionComplete(getScore());
+          message += ' All targets destroyed — mission complete!';
+        }
+        this.showMessage(message, missionComplete ? 8000 : 4000);
         this.isAnimatingFire = false;
         this.updateUI();
       },
@@ -810,7 +823,7 @@ export default class MapScene extends Phaser.Scene {
     if (count === 0) {
       contractsEl.textContent = 'All contracts fulfilled';
     } else {
-      contractsEl.textContent = `${count} × ${formatMoney(CONFIG.contractValue)} contracts active (${formatMoney(totalValue)} total)`;
+      contractsEl.textContent = `${count} contract${count === 1 ? '' : 's'} active (${formatMoney(totalValue)} total)`;
     }
 
     const missionEl = ui('mission-complete');
@@ -848,7 +861,10 @@ export default class MapScene extends Phaser.Scene {
           li.style.fontWeight = '600';
         }
       } else if (r.type === 'contract') {
-        li.textContent = `Kill confirmed — ${formatMoney(r.value)} contract awarded`;
+        const target = state.targets.find((t) => t.id === r.targetId);
+        li.textContent = target?.verificationRequired
+          ? `Kill confirmed — ${formatMoney(r.value)} contract awarded`
+          : `Contract awarded — ${formatMoney(r.value)}`;
       } else if (r.type === 'fire') {
         li.textContent = `Fire mission complete at (${r.sensorCell.x}, ${r.sensorCell.y})`;
       }
@@ -861,7 +877,7 @@ export default class MapScene extends Phaser.Scene {
       gameOverEl.classList.add('victory');
       ui('game-over-title').textContent = 'Mission Complete';
       ui('game-over-message').textContent =
-        `All targets destroyed and confirmed. Earned ${formatMoney(getScore())} — Balance ${formatMoney(getMoney())}`;
+        `All targets destroyed. Earned ${formatMoney(getScore())} — Balance ${formatMoney(getMoney())}`;
     } else if (state.gameOver) {
       trackGameOverMoney();
       gameOverEl.classList.remove('hidden');

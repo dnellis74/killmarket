@@ -1,6 +1,6 @@
 # Killmarket — Artillery Targeting MVP
 
-A single-player artillery targeting prototype built with Vite and Phaser 3. Deploy sensor drones to locate hidden enemy units, then fire ballistic missions to destroy them. **Contract payouts come from sensor-confirmed kills, not from fire missions alone.**
+A single-player artillery targeting prototype built with Vite and Phaser 3. Deploy sensor drones to locate hidden enemy units, then fire ballistic missions to destroy them. **Each contract defines its own payout and whether kills require sensor verification.**
 
 **Repository:** [github.com/dnellis74/killmarket](https://github.com/dnellis74/killmarket)
 
@@ -34,18 +34,17 @@ Or connect the repo in the Vercel dashboard. The project builds with `npm run bu
 
 The UI is **phone-first**: map on top, controls below, in a centered column (max 480px wide). The header shows your **balance**, **earned $**, and active **contracts** line (e.g. `2 × $500K contracts active ($1.0M total)`).
 
-1. You start with **$1M**. Each drone deploy or fire mission costs **$100K**. Two hidden enemy targets are **$500K contracts** each.
+1. You start with **$1M**. Each drone deploy or fire mission costs **$100K**. Contracts are defined in config — the demo has two **$500K** contracts with **no verification required** (payout on direct hit).
 2. Select **Bearing** or **Distance** from the action panel.
 3. Tap a grid cell on the map to choose coordinates. The action button switches to **Confirm coords** — tap it again to execute (two-step confirm). Tap a different cell to change coordinates before confirming.
 4. The drone travels to the cell, attempts detection within a 3-mile radius, then returns.
 5. **Fog of war:** the map starts with a 1-mile reveal around your artillery position. As the drone travels, it clears fog in a 1-mile visual range along its path. On landing, the 3-mile sensor scan clears fog in that radius.
 6. Successful readings appear as a bearing ray (yellow) or distance ring (green) from the drone's landing position (sensor).
 7. **Fire Mission** is always available (unless game over or mid-action). Select it, tap a cell to aim, then **Confirm coords** to fire ($100K per attempt). Sensor readings help you decide where to click — hits are not guaranteed.
-8. The turret rotates toward your aim point, elevates for range, and fires. Fire does **not** tell you whether you hit — outcome is unknown until sensors confirm. A direct hit marks that unit **Combat Ineffective** internally but does not pay out or reveal success.
-9. Drones report **combat effectiveness** (SALUTE) for each unit detected within 3 miles. Detected untouched units report **Fully Effective**; hit units report **Combat Ineffective**.
-10. When a drone detects a **Combat Ineffective** (destroyed) unit, the **$500K contract pays out** — added to your earned total and balance. Each destroyed unit can only be paid once.
-11. When **all** enemy units are **sensor-confirmed** destroyed, you win — **Mission Complete**.
-12. If your balance reaches **$0** before mission complete, you lose — **Game Over** and enemy positions are revealed on the map.
+8. The turret rotates toward your aim point, elevates for range, and fires. A **direct hit** destroys the unit. Contracts **without verification** pay out immediately on hit; contracts **with verification** require a drone to confirm the kill before payout.
+9. Drones report **combat effectiveness** (SALUTE) for each unit detected within 3 miles.
+10. When **all** contracts are fulfilled, you win — **Mission Complete**.
+11. If your balance reaches **$0** before mission complete, you lose — **Game Over** and enemy positions are revealed on the map.
 
 ## Controls
 
@@ -63,7 +62,7 @@ Edit `src/config.js`:
 |-----|---------|-------------|
 | `startingMoney` | 1000000 | Initial balance ($) |
 | `actionCost` | 100000 | Cost per drone deploy or fire mission ($) |
-| `contractValue` | 500000 | Payout per sensor-confirmed kill ($) |
+| `contracts` | `[{ value: 500000, verificationRequired: false }, …]` | Contract list — one hidden target each |
 | `gridSize` | 100 | Grid cells per axis (10 mi × 10 mi) |
 | `cellSizeMiles` | 0.1 | Miles per grid cell |
 | `mapSizeMiles` | 10 | Map extent in miles |
@@ -75,7 +74,6 @@ Edit `src/config.js`:
 | `gravity` | 9.8 | m/s² |
 | `milesToMeters` | 1609.34 | Conversion factor |
 | `playerCell` | `{ x: 10, y: 50 }` | Fixed artillery position |
-| `targetCount` | 2 | Number of hidden enemy units (contracts) |
 | `cellPx` | 10 | Pixels per grid cell on screen |
 
 ## Combat Effectiveness (SALUTE)
@@ -89,7 +87,7 @@ Targets carry an effectiveness status reported by drone sensors on detection:
 | `ineffective` | Ineffective (Red) | 50%–69% |
 | `combat_ineffective` | Combat Ineffective (Black) | <50% |
 
-Current rules: detected untouched units report **Fully Effective**; fire hits set the target to **Combat Ineffective**. Contract payouts are awarded when a drone detects and confirms a destroyed unit.
+Current rules: detected untouched units report **Fully Effective**; fire hits set the target to **Combat Ineffective**. Payout timing depends on each contract's `verificationRequired` flag.
 
 ## Project Structure
 
