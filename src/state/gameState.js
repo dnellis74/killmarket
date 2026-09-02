@@ -1,5 +1,6 @@
 import { CONFIG } from '../config.js';
 import { EFFECTIVENESS } from '../systems/effectiveness.js';
+import { initRevealedCells, isRevealed } from '../systems/fogOfWar.js';
 
 let state = null;
 let nextId = 1;
@@ -26,8 +27,11 @@ function createTarget(cell) {
   return {
     id: generateId(),
     cell: { ...cell },
+    contractValue: CONFIG.contractValue,
+    contractStatus: 'active',
     effectiveness: null,
     killConfirmed: false,
+    visuallyRevealed: false,
   };
 }
 
@@ -35,11 +39,15 @@ export function initGameState() {
   nextId = 1;
   const targetCells = randomDistinctCells(CONFIG.targetCount, CONFIG.gridSize);
   state = {
-    energy: CONFIG.startingEnergy,
+    money: CONFIG.startingMoney,
     readings: [],
     drones: [],
     targets: targetCells.map((cell) => createTarget(cell)),
     playerCell: { ...CONFIG.playerCell },
+    revealedCells: initRevealedCells(
+      CONFIG.playerCell,
+      CONFIG.initialRevealRadiusMiles
+    ),
     gameOver: false,
     score: 0,
     missionCompleteReported: false,
@@ -96,11 +104,11 @@ export function updateDrone(id, updates) {
   return drone;
 }
 
-export function spendEnergy(amount = CONFIG.actionCost) {
-  if (state.energy < amount) return false;
-  state.energy -= amount;
-  if (state.energy <= 0) {
-    state.energy = 0;
+export function spendMoney(amount = CONFIG.actionCost) {
+  if (state.money < amount) return false;
+  state.money -= amount;
+  if (state.money <= 0) {
+    state.money = 0;
     state.gameOver = true;
   }
   return true;
@@ -114,7 +122,7 @@ export function getDistanceReadings() {
   return state.readings.filter((r) => r.type === 'distance');
 }
 
-/** Enough sensor intel to enable fire (player still aims manually). */
+/** Whether readings support triangulation hints (does not gate fire). */
 export function canFire() {
   const bearings = getBearingReadings();
   const distances = getDistanceReadings();
@@ -155,8 +163,8 @@ export function markTargetHitAtCell(aimCell) {
 }
 
 /**
- * Sensor confirms a destroyed unit — awards score once per target.
- * @returns {boolean} true if a point was awarded
+ * Sensor confirms a destroyed unit — pays out contract once per target.
+ * @returns {boolean} true if contract payout was awarded
  */
 export function confirmKillViaSensor(target) {
   if (
@@ -166,10 +174,38 @@ export function confirmKillViaSensor(target) {
     return false;
   }
   target.killConfirmed = true;
-  state.score += 1;
+  target.contractStatus = 'paid';
+  const payout = target.contractValue;
+  state.score += payout;
+  state.money += payout;
   return true;
 }
 
 export function getScore() {
   return state.score;
+}
+
+export function getMoney() {
+  return state.money;
+}
+
+export function getActiveContracts() {
+  return getState().targets.filter((t) => t.contractStatus === 'active');
+}
+
+export function getContractSummary() {
+  const active = getActiveContracts();
+  const totalValue = active.reduce((sum, t) => sum + t.contractValue, 0);
+  return { count: active.length, totalValue };
+}
+
+export function isCellRevealed(cell) {
+  return isRevealed(getState().revealedCells, cell);
+}
+
+export function revealTargetVisually(targetId) {
+  const target = getState().targets.find((t) => t.id === targetId);
+  if (!target || target.visuallyRevealed) return false;
+  target.visuallyRevealed = true;
+  return true;
 }

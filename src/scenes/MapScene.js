@@ -4,19 +4,22 @@ import {
   getState,
   initGameState,
   addReading,
+  createReading,
   addDrone,
   updateDrone,
-  spendEnergy,
-  canFire,
+  spendMoney,
   getDistanceReadings,
   createDrone,
   getScore,
+  getMoney,
+  getContractSummary,
   getTargets,
   markTargetHitAtCell,
   confirmKillViaSensor,
   checkMissionComplete,
   findTargetAtCell,
   isVictory,
+  revealTargetVisually,
 } from '../state/gameState.js';
 import {
   attemptDetection,
@@ -24,7 +27,14 @@ import {
   worldToCell,
   computeBearing,
   cellDistanceMiles,
+  isTargetInRange,
 } from '../systems/sensors.js';
+import {
+  revealCellsInRange,
+  revealCellsInRangeFromWorld,
+  revealCircle,
+  isRevealed,
+} from '../systems/fogOfWar.js';
 import { triangulateFromTwoDistances } from '../systems/triangulation.js';
 import { EFFECTIVENESS, getEffectivenessDisplay } from '../systems/effectiveness.js';
 import {
@@ -37,6 +47,17 @@ import {
 const { gridSize, cellPx } = CONFIG;
 const WORLD_SIZE = gridSize * cellPx;
 
+function formatMoney(amount) {
+  if (amount >= 1_000_000) {
+    return `$${(amount / 1_000_000).toFixed(1)}M`;
+  }
+  if (amount >= 1_000) {
+    const k = amount / 1_000;
+    return Number.isInteger(k) ? `$${k}K` : `$${k.toFixed(1)}K`;
+  }
+  return `$${amount}`;
+}
+
 function formatSensorReading(type, value) {
   return type === 'bearing'
     ? `Bearing ${value.toFixed(1)}°`
@@ -47,22 +68,33 @@ function ui(id) {
   return document.getElementById(id);
 }
 
+const ACTION_LABELS = {
+  bearing: 'Bearing',
+  distance: 'Distance',
+  fire: 'Fire Mission',
+};
+
 export default class MapScene extends Phaser.Scene {
   static uiBound = false;
   constructor() {
     super('MapScene');
-    this.selectedDroneType = null;
-    this.fireMode = false;
+    /** @type {{ type: 'bearing' | 'distance' | 'fire', cell: { x: number, y: number } | null } | null} */
+    this.pendingAction = null;
+    this.pendingMarker = null;
+    this.mapPointer = { pendingTap: false, startX: 0, startY: 0 };
     this.activeDroneSprites = new Map();
     this.isAnimatingFire = false;
     this.isDeployingDrone = false;
     this.targetMarkers = [];
+    this.spottedTargetMarkers = [];
     this.messageHideTimer = null;
   }
 
   create() {
     initGameState();
     this.drawGrid();
+    this.fogGraphics = this.add.graphics().setDepth(6);
+    this.drawFog();
     this.createPlayer();
     this.setupCamera();
     this.setupInput();
@@ -83,6 +115,7 @@ export default class MapScene extends Phaser.Scene {
     this.layoutMapOverlay();
     this.scale.on('resize', this.layoutMapOverlay, this);
 
+    this.updateActionUI();
     this.updateUI();
 
     if (import.meta.env.DEV) {
@@ -101,6 +134,61 @@ export default class MapScene extends Phaser.Scene {
       graphics.lineBetween(pos, 0, pos, WORLD_SIZE);
       graphics.lineBetween(0, pos, WORLD_SIZE, pos);
     }
+  }
+
+  drawFog() {
+    const g = this.fogGraphics;
+    g.clear();
+    g.fillStyle(0x0a0a14, 0.72);
+
+    const revealed = getState().revealedCells;
+    for (let x = 0; x < gridSize; x++) {
+      for (let y = 0; y < gridSize; y++) {
+        if (!isRevealed(revealed, { x, y })) {
+          g.fillRect(x * cellPx, y * cellPx, cellPx, cellPx);
+        }
+      }
+    }
+  }
+
+  revealFogAroundWorld(worldX, worldY, radiusMiles) {
+    const anyNew = revealCellsInRangeFromWorld(
+      getState().revealedCells,
+      worldX,
+      worldY,
+      radiusMiles
+    );
+    if (anyNew) this.drawFog();
+    return anyNew;
+  }
+
+  spotTargetsInRange(centerCell, radiusMiles) {
+    for (const target of getTargets()) {
+      if (target.visuallyRevealed || target.killConfirmed) continue;
+      if (!isTargetInRange(centerCell, target.cell, radiusMiles)) continue;
+      if (!revealTargetVisually(target.id)) continue;
+      this.createSpottedMarker(target);
+      this.showMessage(
+        `Visual contact: enemy at (${target.cell.x}, ${target.cell.y})`
+      );
+    }
+  }
+
+  createSpottedMarker(target) {
+    const pos = cellToWorld(target.cell);
+    const container = this.add.container(pos.x, pos.y).setDepth(12);
+    const g = this.add.graphics();
+    const s = cellPx * 0.45;
+
+    g.fillStyle(0xff8800, 0.95);
+    g.fillTriangle(0, -s, s, 0, 0, s);
+    g.fillTriangle(0, -s, -s, 0, 0, s);
+    g.lineStyle(2, 0xffcc44, 1);
+    g.strokeTriangle(0, -s, s, 0, 0, s);
+    g.strokeTriangle(0, -s, -s, 0, 0, s);
+
+    container.add(g);
+    this.spottedTargetMarkers.push({ targetId: target.id, container });
   }
 
   createPlayer() {
@@ -157,19 +245,13 @@ export default class MapScene extends Phaser.Scene {
     this.input.on('pointerdown', (pointer) => {
       if (pointer.rightButtonDown()) return;
 
-      if (!this.isDeployingDrone && !this.isAnimatingFire) {
-        const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
-        const cell = worldToCell(worldPoint.x, worldPoint.y);
-        if (this.isValidCell(cell)) {
-          if (this.fireMode) {
-            this.executeFireAtCell(cell);
-            return;
-          }
-          if (this.selectedDroneType) {
-            this.deployDrone(cell);
-            return;
-          }
-        }
+      if (this.pendingAction && !this.isDeployingDrone && !this.isAnimatingFire) {
+        this.mapPointer.pendingTap = true;
+        this.mapPointer.startX = pointer.x;
+        this.mapPointer.startY = pointer.y;
+        this.dragStart = { x: pointer.x, y: pointer.y };
+        this.camStart = { x: cam.scrollX, y: cam.scrollY };
+        return;
       }
 
       this.isDragging = true;
@@ -180,6 +262,15 @@ export default class MapScene extends Phaser.Scene {
     this.lastPinchDistance = null;
 
     this.input.on('pointermove', (pointer) => {
+      if (this.mapPointer.pendingTap) {
+        const dx = pointer.x - this.mapPointer.startX;
+        const dy = pointer.y - this.mapPointer.startY;
+        if (Math.sqrt(dx * dx + dy * dy) > 10) {
+          this.mapPointer.pendingTap = false;
+          this.isDragging = true;
+        }
+      }
+
       if (this.input.pointer1.isDown && this.input.pointer2.isDown) {
         const dx = this.input.pointer1.x - this.input.pointer2.x;
         const dy = this.input.pointer1.y - this.input.pointer2.y;
@@ -202,7 +293,18 @@ export default class MapScene extends Phaser.Scene {
       cam.scrollY = this.camStart.y - pdy;
     });
 
-    this.input.on('pointerup', () => {
+    this.input.on('pointerup', (pointer) => {
+      if (this.mapPointer.pendingTap && this.pendingAction) {
+        const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
+        const cell = worldToCell(worldPoint.x, worldPoint.y);
+        if (this.isValidCell(cell)) {
+          this.pendingAction.cell = { x: cell.x, y: cell.y };
+          this.drawPendingMarker();
+          this.updateActionUI();
+        }
+      }
+
+      this.mapPointer.pendingTap = false;
       this.isDragging = false;
       this.lastPinchDistance = null;
     });
@@ -218,9 +320,9 @@ export default class MapScene extends Phaser.Scene {
     if (MapScene.uiBound) return;
     MapScene.uiBound = true;
 
-    ui('btn-bearing').addEventListener('click', () => this.selectDroneType('bearing'));
-    ui('btn-distance').addEventListener('click', () => this.selectDroneType('distance'));
-    ui('btn-fire').addEventListener('click', () => this.toggleFireMode());
+    ui('btn-bearing').addEventListener('click', () => this.onActionButton('bearing'));
+    ui('btn-distance').addEventListener('click', () => this.onActionButton('distance'));
+    ui('btn-fire').addEventListener('click', () => this.onActionButton('fire'));
     ui('btn-restart').addEventListener('click', () => this.scene.restart());
   }
 
@@ -228,62 +330,162 @@ export default class MapScene extends Phaser.Scene {
     return cell.x >= 0 && cell.x < gridSize && cell.y >= 0 && cell.y < gridSize;
   }
 
-  selectDroneType(type) {
+  onActionButton(type) {
     const state = getState();
-    if (state.gameOver || this.isDeployingDrone || this.isAnimatingFire || this.fireMode) return;
+    if (state.gameOver || this.isDeployingDrone || this.isAnimatingFire) return;
 
-    this.selectedDroneType = this.selectedDroneType === type ? null : type;
-    ui('btn-bearing').classList.toggle('active', this.selectedDroneType === 'bearing');
-    ui('btn-distance').classList.toggle('active', this.selectedDroneType === 'distance');
+    const pending = this.pendingAction;
 
-    this.updateStatusDisplay();
-  }
-
-  toggleFireMode() {
-    const state = getState();
-    if (state.gameOver || this.isAnimatingFire || this.isDeployingDrone) return;
-
-    if (this.fireMode) {
-      this.fireMode = false;
-    } else {
-      if (!canFire()) return;
-      this.fireMode = true;
-      this.selectedDroneType = null;
-      ui('btn-bearing').classList.remove('active');
-      ui('btn-distance').classList.remove('active');
+    if (pending?.type === type && pending.cell) {
+      this.confirmPendingAction();
+      return;
     }
 
-    ui('btn-fire').classList.toggle('active', this.fireMode);
+    if (pending?.type === type && !pending.cell) {
+      this.clearPendingAction();
+      return;
+    }
+
+    const switchingSensorType =
+      pending?.cell &&
+      (pending.type === 'bearing' || pending.type === 'distance') &&
+      (type === 'bearing' || type === 'distance');
+
+    this.pendingAction = {
+      type,
+      cell: switchingSensorType ? pending.cell : null,
+    };
+    this.drawPendingMarker();
+    this.updateActionUI();
+  }
+
+  confirmPendingAction() {
+    const pending = this.pendingAction;
+    if (!pending?.cell) return;
+
+    const cell = { ...pending.cell };
+    this.clearPendingAction();
+
+    if (pending.type === 'fire') {
+      this.executeFireAtCell(cell);
+    } else {
+      this.deployDrone(pending.type, cell);
+    }
+  }
+
+  clearPendingAction() {
+    this.pendingAction = null;
+    if (this.pendingMarker) {
+      this.pendingMarker.destroy();
+      this.pendingMarker = null;
+    }
+    this.updateActionUI();
+  }
+
+  drawPendingMarker() {
+    if (this.pendingMarker) {
+      this.pendingMarker.destroy();
+      this.pendingMarker = null;
+    }
+
+    const pending = this.pendingAction;
+    const cell = pending?.cell;
+    if (!cell) return;
+
+    const pos = cellToWorld(cell);
+    const container = this.add.container(pos.x, pos.y).setDepth(11);
+    const g = this.add.graphics();
+
+    const isSensor = pending.type === 'bearing' || pending.type === 'distance';
+    if (isSensor) {
+      const rangePx = (CONFIG.detectionRadiusMiles / CONFIG.cellSizeMiles) * cellPx;
+      g.fillStyle(0x00ccff, 0.1);
+      g.fillCircle(0, 0, rangePx);
+      g.lineStyle(1.5, 0x00ccff, 0.5);
+      g.strokeCircle(0, 0, rangePx);
+    }
+
+    const r = cellPx * 0.45;
+    g.lineStyle(2, 0xffffff, 0.95);
+    g.strokeCircle(0, 0, r);
+    g.lineStyle(2, 0x00ccff, 0.9);
+    g.lineBetween(-r, 0, r, 0);
+    g.lineBetween(0, -r, 0, r);
+    container.add(g);
+    this.pendingMarker = container;
+  }
+
+  setActionButtonState(btnId, { active, confirm, coords }) {
+    const type = btnId === 'btn-fire' ? 'fire' : btnId.replace('btn-', '');
+    const btn = ui(btnId);
+    const label = btn.querySelector('.btn-label');
+    const cost = btn.querySelector('.btn-cost');
+
+    btn.classList.toggle('active', active);
+    btn.classList.toggle('confirm-ready', confirm);
+
+    if (confirm) {
+      label.textContent = 'Confirm coords';
+      cost.textContent = coords ?? '';
+      cost.style.display = coords ? 'block' : 'none';
+    } else {
+      label.textContent = ACTION_LABELS[type];
+      cost.textContent = formatMoney(CONFIG.actionCost);
+      cost.style.display = 'block';
+    }
+  }
+
+  updateActionUI() {
+    const pending = this.pendingAction;
+    const types = ['bearing', 'distance', 'fire'];
+
+    for (const type of types) {
+      const btnId = type === 'fire' ? 'btn-fire' : `btn-${type}`;
+      const isActive = pending?.type === type;
+      const confirm = isActive && pending.cell !== null;
+      const coords = confirm ? `(${pending.cell.x}, ${pending.cell.y})` : null;
+      this.setActionButtonState(btnId, { active: isActive, confirm, coords });
+    }
+
     this.updateStatusDisplay();
     this.updateUI();
   }
 
   updateStatusDisplay() {
     const status = ui('status-display');
-    if (this.fireMode) {
-      status.textContent = 'Fire mode: tap the map to aim and fire.';
-    } else if (this.selectedDroneType) {
-      status.textContent = `Selected: ${this.selectedDroneType} drone. Tap the map to deploy.`;
+    const pending = this.pendingAction;
+
+    if (!pending) {
+      status.textContent = 'Select an action, then tap the map to choose coordinates.';
+      return;
+    }
+
+    const name =
+      pending.type === 'fire' ? 'Fire mission' : `${pending.type} drone`;
+
+    if (pending.cell) {
+      const rangeNote =
+        pending.type === 'bearing' || pending.type === 'distance'
+          ? ` Scan radius: ${CONFIG.detectionRadiusMiles} mi (clears fog).`
+          : '';
+      status.textContent = `${name}: (${pending.cell.x}, ${pending.cell.y}) — tap map to change, press Confirm coords to execute.${rangeNote}`;
     } else {
-      status.textContent = 'Select a sensor drone, then tap the map to deploy.';
+      status.textContent = `${name}: tap the map to select coordinates.`;
     }
   }
 
-  deployDrone(targetCell) {
+  deployDrone(type, targetCell) {
     const state = getState();
     if (state.gameOver) return;
-    if (!spendEnergy()) {
-      this.showMessage('Not enough energy!');
+    if (!spendMoney()) {
+      this.showMessage('Not enough money!');
       this.updateUI();
       return;
     }
 
-    const drone = createDrone(this.selectedDroneType, targetCell);
+    const drone = createDrone(type, targetCell);
     addDrone(drone);
     this.isDeployingDrone = true;
-    this.selectedDroneType = null;
-    ui('btn-bearing').classList.remove('active');
-    ui('btn-distance').classList.remove('active');
 
     const playerPos = cellToWorld(state.playerCell);
     const targetPos = cellToWorld(targetCell);
@@ -304,6 +506,13 @@ export default class MapScene extends Phaser.Scene {
       y: targetPos.y,
       duration: halfDuration,
       ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        this.revealFogAroundWorld(sprite.x, sprite.y, CONFIG.visualRangeMiles);
+        this.spotTargetsInRange(
+          worldToCell(sprite.x, sprite.y),
+          CONFIG.visualRangeMiles
+        );
+      },
       onComplete: () => {
         this.onDroneArrived(drone, targetCell, sprite, halfDuration);
       },
@@ -312,6 +521,11 @@ export default class MapScene extends Phaser.Scene {
 
   onDroneArrived(drone, droneCell, sprite, returnDuration) {
     const state = getState();
+
+    revealCircle(state.revealedCells, droneCell, CONFIG.detectionRadiusMiles);
+    this.drawFog();
+    this.spotTargetsInRange(droneCell, CONFIG.visualRangeMiles);
+
     const { detected, reading, effectivenessResults } = attemptDetection(
       drone.type,
       droneCell,
@@ -325,7 +539,8 @@ export default class MapScene extends Phaser.Scene {
       const readingDetail = formatSensorReading(drone.type, reading.value);
 
       const effParts = [];
-      let pointsScored = 0;
+      let contractsPaid = 0;
+      let payoutTotal = 0;
 
       for (const { target, effectiveness, effectivenessReading } of effectivenessResults) {
         addReading(effectivenessReading);
@@ -334,15 +549,21 @@ export default class MapScene extends Phaser.Scene {
         effParts.push(effLabel);
 
         if (effectiveness === EFFECTIVENESS.COMBAT_INEFFECTIVE) {
-          if (confirmKillViaSensor(target)) pointsScored++;
+          if (confirmKillViaSensor(target)) {
+            contractsPaid++;
+            payoutTotal += target.contractValue;
+            addReading(
+              createReading('contract', target.contractValue, droneCell, target.id)
+            );
+          }
         }
       }
 
       let message = `${drone.type} drone: contact! ${readingDetail} — ${effParts.join('; ')}`;
-      if (pointsScored === 1) {
-        message += ' — +1 point — Combat Ineffective unit confirmed destroyed';
-      } else if (pointsScored > 1) {
-        message += ` — +${pointsScored} points — Combat Ineffective units confirmed destroyed`;
+      if (contractsPaid === 1) {
+        message += ` — ${formatMoney(payoutTotal)} contract paid — Combat Ineffective unit confirmed destroyed`;
+      } else if (contractsPaid > 1) {
+        message += ` — ${formatMoney(payoutTotal)} contracts paid — Combat Ineffective units confirmed destroyed`;
       }
 
       const missionComplete = checkMissionComplete();
@@ -366,6 +587,13 @@ export default class MapScene extends Phaser.Scene {
       y: playerPos.y,
       duration: returnDuration,
       ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        this.revealFogAroundWorld(sprite.x, sprite.y, CONFIG.visualRangeMiles);
+        this.spotTargetsInRange(
+          worldToCell(sprite.x, sprite.y),
+          CONFIG.visualRangeMiles
+        );
+      },
       onComplete: () => {
         sprite.destroy();
         this.activeDroneSprites.delete(drone.id);
@@ -415,19 +643,16 @@ export default class MapScene extends Phaser.Scene {
 
   executeFireAtCell(aimCell) {
     const state = getState();
-    if (state.gameOver || this.isAnimatingFire || this.isDeployingDrone || !this.fireMode) return;
+    if (state.gameOver || this.isAnimatingFire || this.isDeployingDrone) return;
 
-    if (!spendEnergy()) {
-      this.showMessage('Not enough energy!');
+    if (!spendMoney()) {
+      this.showMessage('Not enough money!');
       this.updateUI();
       return;
     }
 
-    this.fireMode = false;
-    ui('btn-fire').classList.remove('active');
     this.isAnimatingFire = true;
-    this.updateStatusDisplay();
-    this.updateUI();
+    this.updateActionUI();
 
     const bearing = computeBearing(state.playerCell, aimCell);
     const distanceMiles = cellDistanceMiles(state.playerCell, aimCell);
@@ -522,6 +747,7 @@ export default class MapScene extends Phaser.Scene {
         if (isHit) {
           markTargetHitAtCell(aimCell);
         }
+        addReading(createReading('fire', 0, aimCell));
         this.showMessage('Fire mission complete.');
         this.isAnimatingFire = false;
         this.updateUI();
@@ -563,8 +789,16 @@ export default class MapScene extends Phaser.Scene {
 
   updateUI() {
     const state = getState();
-    ui('energy-display').textContent = `Energy ${state.energy}`;
-    ui('score-display').textContent = `Score ${getScore()}`;
+    ui('money-display').textContent = formatMoney(getMoney());
+    ui('score-display').textContent = `Earned ${formatMoney(getScore())}`;
+
+    const { count, totalValue } = getContractSummary();
+    const contractsEl = ui('contracts-display');
+    if (count === 0) {
+      contractsEl.textContent = 'All contracts fulfilled';
+    } else {
+      contractsEl.textContent = `${count} × ${formatMoney(CONFIG.contractValue)} contracts active (${formatMoney(totalValue)} total)`;
+    }
 
     const missionEl = ui('mission-complete');
     if (state.missionCompleteReported) {
@@ -573,17 +807,15 @@ export default class MapScene extends Phaser.Scene {
       missionEl.classList.add('hidden');
     }
 
-    ui('btn-fire').disabled =
-      ((!canFire() && !this.fireMode) || state.gameOver || this.isAnimatingFire || this.isDeployingDrone);
-
-    ui('btn-fire').classList.toggle('active', this.fireMode);
-
     const bearingBtn = ui('btn-bearing');
     const distanceBtn = ui('btn-distance');
-    const disabled =
-      state.gameOver || this.isDeployingDrone || this.isAnimatingFire || this.fireMode;
-    bearingBtn.disabled = disabled;
-    distanceBtn.disabled = disabled;
+    const fireBtn = ui('btn-fire');
+    const pending = this.pendingAction;
+    const busy = state.gameOver || this.isDeployingDrone || this.isAnimatingFire;
+
+    bearingBtn.disabled = busy || pending?.type === 'fire';
+    distanceBtn.disabled = busy || pending?.type === 'fire';
+    fireBtn.disabled = busy || (pending !== null && pending.type !== 'fire');
 
     const list = ui('readings-list');
     list.innerHTML = '';
@@ -602,6 +834,10 @@ export default class MapScene extends Phaser.Scene {
           li.style.color = display.color;
           li.style.fontWeight = '600';
         }
+      } else if (r.type === 'contract') {
+        li.textContent = `Kill confirmed — ${formatMoney(r.value)} contract awarded`;
+      } else if (r.type === 'fire') {
+        li.textContent = `Fire mission complete at (${r.sensorCell.x}, ${r.sensorCell.y})`;
       }
       list.appendChild(li);
     });
@@ -612,13 +848,13 @@ export default class MapScene extends Phaser.Scene {
       gameOverEl.classList.add('victory');
       ui('game-over-title').textContent = 'Mission Complete';
       ui('game-over-message').textContent =
-        `All targets destroyed and confirmed. Score: ${getScore()}`;
+        `All targets destroyed and confirmed. Earned ${formatMoney(getScore())} — Balance ${formatMoney(getMoney())}`;
     } else if (state.gameOver) {
       gameOverEl.classList.remove('hidden');
       gameOverEl.classList.remove('victory');
       ui('game-over-title').textContent = 'Game Over';
       ui('game-over-message').textContent =
-        'Energy depleted. Target locations revealed on map.';
+        'Out of money. Target locations revealed on map.';
       this.revealTargets();
     } else {
       gameOverEl.classList.add('hidden');

@@ -19,9 +19,10 @@
           <header class="ui-header">
             <h1>Killmarket</h1>
             <div class="stats-row">
-              <span id="energy-display">Energy 100</span>
-              <span id="score-display">Score 0</span>
+              <span id="money-display">$1.0M</span>
+              <span id="score-display">Earned $0</span>
             </div>
+            <p id="contracts-display" class="contracts-display">2 × $500K contracts active ($1.0M total)</p>
           </header>
 
           <div id="mission-complete" class="mission-complete hidden">
@@ -29,21 +30,21 @@
           </div>
 
           <p id="status-display" class="status-display">
-            Select a sensor drone, then tap the map to deploy.
+            Select an action, then tap the map to choose coordinates.
           </p>
 
           <div class="action-grid">
             <button id="btn-bearing" class="drone-btn" type="button">
               <span class="btn-label">Bearing</span>
-              <span class="btn-cost">10 energy</span>
+              <span class="btn-cost">$100K</span>
             </button>
             <button id="btn-distance" class="drone-btn" type="button">
               <span class="btn-label">Distance</span>
-              <span class="btn-cost">10 energy</span>
+              <span class="btn-cost">$100K</span>
             </button>
-            <button id="btn-fire" class="fire-btn" type="button" disabled>
+            <button id="btn-fire" class="fire-btn" type="button">
               <span class="btn-label">Fire Mission</span>
-              <span class="btn-cost">10 energy</span>
+              <span class="btn-cost">$100K</span>
             </button>
           </div>
 
@@ -54,7 +55,7 @@
 
           <div id="game-over" class="game-over hidden">
             <h2 id="game-over-title">Game Over</h2>
-            <p id="game-over-message">Energy depleted. Target locations revealed on map.</p>
+            <p id="game-over-message">Out of money. Target locations revealed on map.</p>
             <button id="btn-restart" type="button">Restart</button>
           </div>
         </div>

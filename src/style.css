@@ -74,7 +74,6 @@ body {
   padding: 12px 14px;
   padding-left: max(14px, env(safe-area-inset-left));
   padding-right: max(14px, env(safe-area-inset-right));
-  position: relative;
 }
 
 .ui-header {
@@ -104,10 +103,21 @@ body {
   text-align: center;
 }
 
-#energy-display {
+#money-display {
   background: rgba(0, 120, 180, 0.25);
   color: #5dd4ff;
   border: 1px solid rgba(0, 180, 255, 0.35);
+}
+
+.contracts-display {
+  font-size: 12px;
+  color: #88aa88;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(0, 60, 30, 0.25);
+  border: 1px solid rgba(68, 255, 136, 0.25);
+  border-radius: 6px;
+  text-align: center;
 }
 
 #score-display {
@@ -204,6 +214,15 @@ button:disabled {
   border-color: #ff8800;
 }
 
+button.confirm-ready {
+  background: #006644;
+  border-color: #44ff88;
+}
+
+button.confirm-ready .btn-cost {
+  color: #88ffcc;
+}
+
 .readings-panel {
   flex: 1;
   min-height: 0;
@@ -244,26 +263,32 @@ button:disabled {
 }
 
 .game-over {
-  position: absolute;
-  inset: 0;
-  background: rgba(8, 8, 14, 0.94);
+  flex-shrink: 0;
+  background: rgba(80, 20, 20, 0.45);
+  border: 1px solid #ff4444;
+  border-radius: 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 24px;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-top: 8px;
   text-align: center;
-  z-index: 10;
 }
 
 .game-over.hidden {
   display: none;
 }
 
+.game-over.victory {
+  background: rgba(0, 80, 40, 0.45);
+  border-color: #44ff88;
+}
+
 .game-over h2 {
-  font-size: 22px;
+  font-size: 18px;
   color: #ff4444;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .game-over.victory h2 {
@@ -271,11 +296,10 @@ button:disabled {
 }
 
 .game-over p {
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.45;
   color: #bbb;
-  margin-bottom: 16px;
-  max-width: 280px;
+  margin-bottom: 10px;
 }
 
 #btn-restart {
