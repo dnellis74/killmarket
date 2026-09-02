@@ -7,7 +7,9 @@ dist-ssr
 
 # Local env
 .env
+.env.local
 .env.*
+.env*.local
 !.env.example
 
 # Vercel

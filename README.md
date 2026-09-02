@@ -96,6 +96,7 @@ Current rules: detected untouched units report **Fully Effective**; fire hits se
 ```
 src/
   main.js                  — Vite/Phaser bootstrap
+  analytics.js             — GameAnalytics init and event helpers
   config.js                — Configurable game constants
   style.css                — UI overlay styles (phone-first layout)
   scenes/MapScene.js       — Grid, camera, player, drones, UI, fire animation
@@ -107,6 +108,41 @@ src/
   systems/fogOfWar.js      — Revealed cells, fog clearing on travel and scan
   state/gameState.js       — Money, contracts, readings, targets, drone registry
 ```
+
+## Analytics (GameAnalytics)
+
+Killmarket uses the official [`gameanalytics`](https://www.npmjs.com/package/gameanalytics) JavaScript SDK. Keys are read at build time from Vite env vars and are **never** committed to the repo.
+
+1. Copy the example env file:
+
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. Add your Game Key and Secret Key from the [GameAnalytics dashboard](https://gameanalytics.com/) (Game Settings → SDK setup → JavaScript):
+
+   ```
+   VITE_GA_GAME_KEY=your_game_key_here
+   VITE_GA_SECRET_KEY=your_secret_key_here
+   ```
+
+3. Restart the dev server after changing env vars (`npm run dev`). For production, set the same variables in your host (e.g. Vercel project settings).
+
+If keys are missing, analytics is skipped silently (a dev-only console warning is shown).
+
+### Tracked design events
+
+| Event ID | When |
+|----------|------|
+| `Game:Start` | New game / scene restart |
+| `Drone:Deploy:Bearing` | Bearing drone confirmed (custom fields: `cellX`, `cellY`) |
+| `Drone:Deploy:Distance` | Distance drone confirmed (custom fields: `cellX`, `cellY`) |
+| `Fire:Complete` | Fire mission animation finished (`cellX`, `cellY`, `hit`) |
+| `Kill:Confirmed` | Sensor-confirmed kill / contract paid (value = payout $) |
+| `Game:Over:Money` | Balance reached $0 before mission complete |
+| `Mission:Complete` | All targets sensor-confirmed destroyed (value = earned $) |
+
+Wrapper: `src/analytics.js`.
 
 ## Debug
 

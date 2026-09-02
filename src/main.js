@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import MapScene from './scenes/MapScene.js';
+import { initAnalytics } from './analytics.js';
 import './style.css';
+
+initAnalytics();
 
 function getMapPaneSize() {
   const pane = document.getElementById('map-pane');

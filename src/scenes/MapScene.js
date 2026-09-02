@@ -43,6 +43,14 @@ import {
   radiansToDegrees,
   degreesToRadians,
 } from '../systems/ballistics.js';
+import {
+  trackGameStart,
+  trackDroneDeploy,
+  trackFireMissionComplete,
+  trackKillConfirmed,
+  trackGameOverMoney,
+  trackMissionComplete,
+} from '../analytics.js';
 
 const { gridSize, cellPx } = CONFIG;
 const WORLD_SIZE = gridSize * cellPx;
@@ -92,6 +100,7 @@ export default class MapScene extends Phaser.Scene {
 
   create() {
     initGameState();
+    trackGameStart();
     this.drawGrid();
     this.fogGraphics = this.add.graphics().setDepth(6);
     this.drawFog();
@@ -485,6 +494,7 @@ export default class MapScene extends Phaser.Scene {
 
     const drone = createDrone(type, targetCell);
     addDrone(drone);
+    trackDroneDeploy(type, targetCell);
     this.isDeployingDrone = true;
 
     const playerPos = cellToWorld(state.playerCell);
@@ -550,6 +560,7 @@ export default class MapScene extends Phaser.Scene {
 
         if (effectiveness === EFFECTIVENESS.COMBAT_INEFFECTIVE) {
           if (confirmKillViaSensor(target)) {
+            trackKillConfirmed(target.contractValue);
             contractsPaid++;
             payoutTotal += target.contractValue;
             addReading(
@@ -568,6 +579,7 @@ export default class MapScene extends Phaser.Scene {
 
       const missionComplete = checkMissionComplete();
       if (missionComplete) {
+        trackMissionComplete(getScore());
         message += ' — All targets destroyed';
       }
 
@@ -748,6 +760,7 @@ export default class MapScene extends Phaser.Scene {
           markTargetHitAtCell(aimCell);
         }
         addReading(createReading('fire', 0, aimCell));
+        trackFireMissionComplete(aimCell, isHit);
         this.showMessage('Fire mission complete.');
         this.isAnimatingFire = false;
         this.updateUI();
@@ -850,6 +863,7 @@ export default class MapScene extends Phaser.Scene {
       ui('game-over-message').textContent =
         `All targets destroyed and confirmed. Earned ${formatMoney(getScore())} — Balance ${formatMoney(getMoney())}`;
     } else if (state.gameOver) {
+      trackGameOverMoney();
       gameOverEl.classList.remove('hidden');
       gameOverEl.classList.remove('victory');
       ui('game-over-title').textContent = 'Game Over';
