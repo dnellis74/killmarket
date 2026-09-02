@@ -120,18 +120,18 @@ export function getBearingReadings() {
   return state.readings.filter((r) => r.type === 'bearing');
 }
 
-export function getDistanceReadings() {
-  return state.readings.filter((r) => r.type === 'distance');
+export function getRangeReadings() {
+  return state.readings.filter((r) => r.type === 'range');
 }
 
 /** Whether readings support triangulation hints (does not gate fire). */
 export function canFire() {
   const bearings = getBearingReadings();
-  const distances = getDistanceReadings();
+  const ranges = getRangeReadings();
   return (
     bearings.length >= 2 ||
-    distances.length >= 2 ||
-    (bearings.length >= 1 && distances.length >= 1)
+    ranges.length >= 2 ||
+    (bearings.length >= 1 && ranges.length >= 1)
   );
 }
 

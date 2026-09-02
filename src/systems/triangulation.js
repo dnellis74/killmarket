@@ -138,7 +138,7 @@ export function triangulateTarget(bearingReading, distanceReading) {
  */
 export function getFireSolution(readings, hiddenTargetCell) {
   const bearings = readings.filter((r) => r.type === 'bearing');
-  const distances = readings.filter((r) => r.type === 'distance');
+  const distances = readings.filter((r) => r.type === 'range');
 
   if (bearings.length >= 2) {
     const b1 = bearings[bearings.length - 2];

@@ -8,7 +8,7 @@ import {
   addDrone,
   updateDrone,
   spendMoney,
-  getDistanceReadings,
+  getRangeReadings,
   createDrone,
   getScore,
   getMoney,
@@ -44,6 +44,11 @@ import {
   degreesToRadians,
 } from '../systems/ballistics.js';
 import {
+  createDeployedSensor,
+  updateDeployedSensors,
+  drawDeployedSensors,
+} from '../systems/deployedSensors.js';
+import {
   trackGameStart,
   trackDroneDeploy,
   trackFireMissionComplete,
@@ -69,7 +74,11 @@ function formatMoney(amount) {
 function formatSensorReading(type, value) {
   return type === 'bearing'
     ? `Bearing ${value.toFixed(1)}°`
-    : `Distance ${value.toFixed(2)} mi`;
+    : `Range ${value.toFixed(2)} mi`;
+}
+
+function formatDroneLabel(type) {
+  return type === 'bearing' ? 'Bearing' : type === 'range' ? 'Range' : type;
 }
 
 function ui(id) {
@@ -78,7 +87,7 @@ function ui(id) {
 
 const ACTION_LABELS = {
   bearing: 'Bearing',
-  distance: 'Distance',
+  range: 'Range',
   fire: 'Fire Mission',
 };
 
@@ -86,7 +95,7 @@ export default class MapScene extends Phaser.Scene {
   static uiBound = false;
   constructor() {
     super('MapScene');
-    /** @type {{ type: 'bearing' | 'distance' | 'fire', cell: { x: number, y: number } | null } | null} */
+    /** @type {{ type: 'bearing' | 'range' | 'fire', cell: { x: number, y: number } | null } | null} */
     this.pendingAction = null;
     this.pendingMarker = null;
     this.mapPointer = { pendingTap: false, startX: 0, startY: 0 };
@@ -95,12 +104,14 @@ export default class MapScene extends Phaser.Scene {
     this.isDeployingDrone = false;
     this.targetMarkers = [];
     this.spottedTargetMarkers = [];
+    this.deployedSensors = [];
     this.messageHideTimer = null;
   }
 
   create() {
     initGameState();
     trackGameStart();
+    this.deployedSensors = [];
     this.drawGrid();
     this.fogGraphics = this.add.graphics().setDepth(6);
     this.drawFog();
@@ -109,6 +120,7 @@ export default class MapScene extends Phaser.Scene {
     this.setupInput();
     this.setupUI();
     this.readingGraphics = this.add.graphics().setDepth(5);
+    this.deployedSensorGraphics = this.add.graphics().setDepth(7);
     this.messageText = this.add
       .text(8, 0, '', {
         fontSize: '13px',
@@ -330,7 +342,7 @@ export default class MapScene extends Phaser.Scene {
     MapScene.uiBound = true;
 
     ui('btn-bearing').addEventListener('click', () => this.onActionButton('bearing'));
-    ui('btn-distance').addEventListener('click', () => this.onActionButton('distance'));
+    ui('btn-range').addEventListener('click', () => this.onActionButton('range'));
     ui('btn-fire').addEventListener('click', () => this.onActionButton('fire'));
     ui('btn-restart').addEventListener('click', () => this.scene.restart());
   }
@@ -357,8 +369,8 @@ export default class MapScene extends Phaser.Scene {
 
     const switchingSensorType =
       pending?.cell &&
-      (pending.type === 'bearing' || pending.type === 'distance') &&
-      (type === 'bearing' || type === 'distance');
+      (pending.type === 'bearing' || pending.type === 'range') &&
+      (type === 'bearing' || type === 'range');
 
     this.pendingAction = {
       type,
@@ -405,7 +417,7 @@ export default class MapScene extends Phaser.Scene {
     const container = this.add.container(pos.x, pos.y).setDepth(11);
     const g = this.add.graphics();
 
-    const isSensor = pending.type === 'bearing' || pending.type === 'distance';
+    const isSensor = pending.type === 'bearing' || pending.type === 'range';
     if (isSensor) {
       const rangePx = (CONFIG.detectionRadiusMiles / CONFIG.cellSizeMiles) * cellPx;
       g.fillStyle(0x00ccff, 0.1);
@@ -446,7 +458,7 @@ export default class MapScene extends Phaser.Scene {
 
   updateActionUI() {
     const pending = this.pendingAction;
-    const types = ['bearing', 'distance', 'fire'];
+    const types = ['bearing', 'range', 'fire'];
 
     for (const type of types) {
       const btnId = type === 'fire' ? 'btn-fire' : `btn-${type}`;
@@ -474,7 +486,7 @@ export default class MapScene extends Phaser.Scene {
 
     if (pending.cell) {
       const rangeNote =
-        pending.type === 'bearing' || pending.type === 'distance'
+        pending.type === 'bearing' || pending.type === 'range'
           ? ` Scan radius: ${CONFIG.detectionRadiusMiles} mi (clears fog).`
           : '';
       status.textContent = `${name}: (${pending.cell.x}, ${pending.cell.y}) — tap map to change, press Confirm coords to execute.${rangeNote}`;
@@ -542,6 +554,14 @@ export default class MapScene extends Phaser.Scene {
       state.targets
     );
 
+    this.deployedSensors.push(
+      createDeployedSensor(
+        drone.type,
+        droneCell,
+        detected && reading ? reading.value : null
+      )
+    );
+
     if (detected && reading) {
       addReading(reading);
       updateDrone(drone.id, { status: 'returning', resultReadingId: reading.id });
@@ -570,7 +590,7 @@ export default class MapScene extends Phaser.Scene {
         }
       }
 
-      let message = `${drone.type} drone: contact! ${readingDetail} — ${effParts.join('; ')}`;
+      let message = `${formatDroneLabel(drone.type)} drone: contact! ${readingDetail} — ${effParts.join('; ')}`;
       if (contractsPaid === 1) {
         message += ` — ${formatMoney(payoutTotal)} contract paid — Combat Ineffective unit confirmed destroyed`;
       } else if (contractsPaid > 1) {
@@ -587,7 +607,7 @@ export default class MapScene extends Phaser.Scene {
       this.drawReadings();
     } else {
       updateDrone(drone.id, { status: 'returning', resultReadingId: null });
-      this.showMessage(`${drone.type} drone: no contact.`);
+      this.showMessage(`${formatDroneLabel(drone.type)} drone: no contact.`);
     }
 
     this.updateUI();
@@ -620,30 +640,10 @@ export default class MapScene extends Phaser.Scene {
     const g = this.readingGraphics;
     g.clear();
 
-    const state = getState();
-    const milesToPx = cellPx / CONFIG.cellSizeMiles;
-
-    for (const reading of state.readings) {
-      if (reading.type === 'bearing') {
-        const sensorPos = cellToWorld(reading.sensorCell);
-        const angleRad = degreesToRadians(reading.value);
-        const rayLength = WORLD_SIZE * 1.5;
-        const endX = sensorPos.x + Math.sin(angleRad) * rayLength;
-        const endY = sensorPos.y - Math.cos(angleRad) * rayLength;
-        g.lineStyle(2, 0xffcc00, 0.9);
-        g.lineBetween(sensorPos.x, sensorPos.y, endX, endY);
-      } else if (reading.type === 'distance') {
-        const sensorPos = cellToWorld(reading.sensorCell);
-        const radiusPx = reading.value * milesToPx;
-        g.lineStyle(1.5, 0x00ff88, 0.8);
-        g.strokeCircle(sensorPos.x, sensorPos.y, radiusPx);
-      }
-    }
-
-    const distances = getDistanceReadings();
-    if (distances.length >= 2) {
-      const d1 = distances[distances.length - 2];
-      const d2 = distances[distances.length - 1];
+    const ranges = getRangeReadings();
+    if (ranges.length >= 2) {
+      const d1 = ranges[ranges.length - 2];
+      const d2 = ranges[ranges.length - 1];
       const ambiguousPoints = triangulateFromTwoDistances(d1, d2);
       for (const point of ambiguousPoints) {
         const pos = cellToWorld(point);
@@ -651,6 +651,17 @@ export default class MapScene extends Phaser.Scene {
         g.fillCircle(pos.x, pos.y, cellPx * 0.35);
       }
     }
+  }
+
+  update(_time, delta) {
+    if (this.deployedSensors.length === 0) return;
+    updateDeployedSensors(this.deployedSensors, delta);
+    drawDeployedSensors(
+      this.deployedSensorGraphics,
+      this.deployedSensors,
+      cellPx,
+      degreesToRadians
+    );
   }
 
   executeFireAtCell(aimCell) {
@@ -834,13 +845,13 @@ export default class MapScene extends Phaser.Scene {
     }
 
     const bearingBtn = ui('btn-bearing');
-    const distanceBtn = ui('btn-distance');
+    const rangeBtn = ui('btn-range');
     const fireBtn = ui('btn-fire');
     const pending = this.pendingAction;
     const busy = state.gameOver || this.isDeployingDrone || this.isAnimatingFire;
 
     bearingBtn.disabled = busy || pending?.type === 'fire';
-    distanceBtn.disabled = busy || pending?.type === 'fire';
+    rangeBtn.disabled = busy || pending?.type === 'fire';
     fireBtn.disabled = busy || (pending !== null && pending.type !== 'fire');
 
     const list = ui('readings-list');
@@ -850,8 +861,8 @@ export default class MapScene extends Phaser.Scene {
       const sensor = `sensor ${r.sensorCell.x},${r.sensorCell.y}`;
       if (r.type === 'bearing') {
         li.textContent = `Bearing: ${r.value.toFixed(1)}° (${sensor})`;
-      } else if (r.type === 'distance') {
-        li.textContent = `Distance: ${r.value.toFixed(2)} mi (${sensor})`;
+      } else if (r.type === 'range') {
+        li.textContent = `Range: ${r.value.toFixed(2)} mi (${sensor})`;
       } else if (r.type === 'effectiveness') {
         const display = getEffectivenessDisplay(r.value);
         const label = display ? display.label : r.value;

@@ -35,11 +35,11 @@ Or connect the repo in the Vercel dashboard. The project builds with `npm run bu
 The UI is **phone-first**: map on top, controls below, in a centered column (max 480px wide). The header shows your **balance**, **earned $**, and active **contracts** line (e.g. `2 × $500K contracts active ($1.0M total)`).
 
 1. You start with **$1M**. Each drone deploy or fire mission costs **$100K**. Contracts are defined in config — the demo has two **$500K** contracts with **no verification required** (payout on direct hit).
-2. Select **Bearing** or **Distance** from the action panel.
+2. Select **Bearing** or **Range** from the action panel.
 3. Tap a grid cell on the map to choose coordinates. The action button switches to **Confirm coords** — tap it again to execute (two-step confirm). Tap a different cell to change coordinates before confirming.
 4. The drone travels to the cell, attempts detection within a 3-mile radius, then returns.
 5. **Fog of war:** the map starts with a 1-mile reveal around your artillery position. As the drone travels, it clears fog in a 1-mile visual range along its path. On landing, the 3-mile sensor scan clears fog in that radius.
-6. Successful readings appear as a bearing ray (yellow) or distance ring (green) from the drone's landing position (sensor).
+6. Drones leave behind a **deployed sensor** at their landing cell. Bearing sensors sweep a yellow beam across their range and pulse when aligned with a target; range sensors emit an expanding green ring that fades at max range and pulses when it reaches a target.
 7. **Fire Mission** is always available (unless game over or mid-action). Select it, tap a cell to aim, then **Confirm coords** to fire ($100K per attempt). Sensor readings help you decide where to click — hits are not guaranteed.
 8. The turret rotates toward your aim point, elevates for range, and fires. A **direct hit** destroys the unit. Contracts **without verification** pay out immediately on hit; contracts **with verification** require a drone to confirm the kill before payout.
 9. Drones report **combat effectiveness** (SALUTE) for each unit detected within 3 miles.
@@ -104,6 +104,7 @@ src/
   systems/effectiveness.js — SALUTE effectiveness levels and helpers
   systems/ballistics.js    — Elevation formula and unit conversion
   systems/fogOfWar.js      — Revealed cells, fog clearing on travel and scan
+  systems/deployedSensors.js — Left-behind sensor sweep and pulse animations
   state/gameState.js       — Money, contracts, readings, targets, drone registry
 ```
 

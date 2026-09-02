@@ -44,7 +44,7 @@ export function trackGameStart() {
 
 /** Sensor drone deployed at target cell. */
 export function trackDroneDeploy(type, cell) {
-  const eventId = type === 'bearing' ? 'Drone:Deploy:Bearing' : 'Drone:Deploy:Distance';
+  const eventId = type === 'bearing' ? 'Drone:Deploy:Bearing' : 'Drone:Deploy:Range';
   trackDesign(eventId, undefined, { cellX: cell.x, cellY: cell.y });
 }
 
