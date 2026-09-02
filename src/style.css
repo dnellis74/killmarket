@@ -1,0 +1,171 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #222;
+  overflow: hidden;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+}
+
+#game-ui {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  pointer-events: auto;
+}
+
+.ui-panel {
+  background: rgba(20, 20, 30, 0.92);
+  color: #eee;
+  padding: 16px;
+  border-radius: 8px;
+  width: 280px;
+  border: 1px solid #444;
+}
+
+.ui-panel h2 {
+  font-size: 16px;
+  margin-bottom: 8px;
+  color: #ffcc00;
+}
+
+.ui-panel h3 {
+  font-size: 13px;
+  margin: 12px 0 6px;
+  color: #aaa;
+}
+
+#energy-display {
+  font-size: 18px;
+  font-weight: bold;
+  color: #00ccff;
+  margin-bottom: 8px;
+}
+
+#score-display {
+  font-size: 16px;
+  font-weight: bold;
+  color: #ffcc00;
+  margin-bottom: 8px;
+}
+
+.mission-complete {
+  font-size: 13px;
+  font-weight: bold;
+  color: #44ff88;
+  background: rgba(0, 80, 40, 0.5);
+  border: 1px solid #44ff88;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+
+.mission-complete.hidden {
+  display: none;
+}
+
+#status-display {
+  font-size: 12px;
+  color: #aaa;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.button-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: #333;
+  color: #eee;
+  transition: background 0.15s;
+}
+
+button:hover:not(:disabled) {
+  background: #444;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+button.active {
+  background: #005588;
+  border-color: #00aaff;
+}
+
+.fire-btn {
+  width: 100%;
+  background: #662200;
+  border-color: #cc4400;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.fire-btn:hover:not(:disabled) {
+  background: #883300;
+}
+
+.fire-btn.active {
+  background: #aa4400;
+  border-color: #ff8800;
+}
+
+#readings-list {
+  list-style: none;
+  font-size: 12px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+#readings-list li {
+  padding: 3px 0;
+  border-bottom: 1px solid #333;
+}
+
+.game-over {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.game-over.hidden {
+  display: none;
+}
+
+.game-over h2 {
+  color: #ff4444;
+  margin-bottom: 8px;
+}
+
+.game-over.victory h2 {
+  color: #44ff88;
+}
+
+.game-over p {
+  margin-bottom: 12px;
+  font-size: 14px;
+}
