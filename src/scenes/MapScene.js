@@ -119,11 +119,23 @@ export default class MapScene extends Phaser.Scene {
   create() {
     initGameState();
     trackGameStart();
+    this.pendingAction = null;
+    this.pendingMarker = null;
+    this.activeDroneSprites = new Map();
+    this.isAnimatingFire = false;
+    this.isDeployingDrone = false;
+    this.targetMarkers = [];
+    this.spottedTargetMarkers = [];
     this.deployedSensors = [];
+    this.logEntries = [];
+
     this.aerialMaskCanvas = document.createElement('canvas');
     this.aerialMaskCanvas.width = WORLD_SIZE;
     this.aerialMaskCanvas.height = WORLD_SIZE;
     this.aerialMaskCtx = this.aerialMaskCanvas.getContext('2d');
+    if (this.textures.exists('aerial-mask')) {
+      this.textures.remove('aerial-mask');
+    }
     this.textures.addCanvas('aerial-mask', this.aerialMaskCanvas);
 
     this.add
@@ -156,7 +168,6 @@ export default class MapScene extends Phaser.Scene {
     this.setupUI();
     this.readingGraphics = this.add.graphics().setDepth(5);
     this.deployedSensorGraphics = this.add.graphics().setDepth(7);
-    this.logEntries = [];
 
     this.layoutMapOverlay();
     this.scale.on('resize', () => {
