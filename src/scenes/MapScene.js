@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CONFIG } from '../config.js';
+import { CONFIG, getActionCost, getDetectionRadiusMiles } from '../config.js';
 import {
   getState,
   initGameState,
@@ -74,12 +74,12 @@ function formatMoney(amount) {
 
 function formatSensorReading(type, value) {
   return type === 'bearing'
-    ? `Bearing ${value.toFixed(1)}°`
-    : `Range ${value.toFixed(2)} mi`;
+    ? `Passive ${value.toFixed(1)}°`
+    : `Active ${value.toFixed(2)} mi`;
 }
 
 function formatDroneLabel(type) {
-  return type === 'bearing' ? 'Bearing' : type === 'range' ? 'Range' : type;
+  return type === 'bearing' ? 'Passive' : type === 'range' ? 'Active' : type;
 }
 
 function ui(id) {
@@ -87,8 +87,8 @@ function ui(id) {
 }
 
 const ACTION_LABELS = {
-  bearing: 'Bearing',
-  range: 'Range',
+  bearing: 'Passive',
+  range: 'Active',
   fire: 'Fire Mission',
 };
 
@@ -481,7 +481,8 @@ export default class MapScene extends Phaser.Scene {
 
     const isSensor = pending.type === 'bearing' || pending.type === 'range';
     if (isSensor) {
-      const rangePx = (CONFIG.detectionRadiusMiles / CONFIG.cellSizeMiles) * cellPx;
+      const rangePx =
+        (getDetectionRadiusMiles(pending.type) / CONFIG.cellSizeMiles) * cellPx;
       g.fillStyle(0x00ccff, 0.1);
       g.fillCircle(0, 0, rangePx);
       g.lineStyle(1.5, 0x00ccff, 0.5);
@@ -513,7 +514,7 @@ export default class MapScene extends Phaser.Scene {
       cost.style.display = coords ? 'block' : 'none';
     } else {
       label.textContent = ACTION_LABELS[type];
-      cost.textContent = formatMoney(CONFIG.actionCost);
+      cost.textContent = formatMoney(getActionCost(type));
       cost.style.display = 'block';
     }
   }
@@ -544,12 +545,15 @@ export default class MapScene extends Phaser.Scene {
     }
 
     const name =
-      pending.type === 'fire' ? 'Fire mission' : `${pending.type} drone`;
+      pending.type === 'fire'
+        ? 'Fire mission'
+        : `${ACTION_LABELS[pending.type]} drone`;
 
     if (pending.cell) {
+      const radius = getDetectionRadiusMiles(pending.type);
       const rangeNote =
         pending.type === 'bearing' || pending.type === 'range'
-          ? ` Scan radius: ${CONFIG.detectionRadiusMiles} mi (clears sensor fog).`
+          ? ` Scan radius: ${radius} mi (clears sensor fog).`
           : '';
       status.textContent = `${name}: (${pending.cell.x}, ${pending.cell.y}) — tap map to change, press Confirm coords to execute.${rangeNote}`;
     } else {
@@ -560,7 +564,7 @@ export default class MapScene extends Phaser.Scene {
   deployDrone(type, targetCell) {
     const state = getState();
     if (state.gameOver) return;
-    if (!spendMoney()) {
+    if (!spendMoney(getActionCost(type))) {
       this.showMessage('Not enough money!');
       this.updateUI();
       return;
@@ -609,7 +613,7 @@ export default class MapScene extends Phaser.Scene {
     revealCircle(
       state.sensorRevealedCells,
       droneCell,
-      CONFIG.detectionRadiusMiles
+      getDetectionRadiusMiles(drone.type)
     );
     this.drawFog();
     this.spotTargetsInRange(droneCell, CONFIG.visualRangeMiles);
@@ -925,9 +929,9 @@ export default class MapScene extends Phaser.Scene {
       let weight = null;
 
       if (r.type === 'bearing') {
-        text = `📡 Bearing ${r.value.toFixed(1)}° from ${sensor}`;
+        text = `📡 Passive ${r.value.toFixed(1)}° from ${sensor}`;
       } else if (r.type === 'range') {
-        text = `📡 Range ${r.value.toFixed(2)} mi from ${sensor}`;
+        text = `📡 Active ${r.value.toFixed(2)} mi from ${sensor}`;
       } else if (r.type === 'effectiveness') {
         const display = getEffectivenessDisplay(r.value);
         const label = display ? `${display.label} (${display.percentRange})` : r.value;

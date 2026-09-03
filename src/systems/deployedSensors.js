@@ -1,4 +1,4 @@
-import { CONFIG } from '../config.js';
+import { CONFIG, getDetectionRadiusMiles } from '../config.js';
 import { cellToWorld } from './grid.js';
 
 const BEARING_SWEEP_RATE = 0.045; // degrees per ms
@@ -48,7 +48,7 @@ export function updateDeployedSensors(sensors, delta) {
   for (const sensor of sensors) {
     const cycleMs = cycleMsFor(sensor);
     const milesToPx = CONFIG.cellPx / CONFIG.cellSizeMiles;
-    const maxRadiusPx = CONFIG.detectionRadiusMiles * milesToPx;
+    const maxRadiusPx = getDetectionRadiusMiles(sensor.type) * milesToPx;
 
     if (sensor.type === 'bearing') {
       sensor.sweepAngle = (sensor.sweepAngle + delta * BEARING_SWEEP_RATE) % 360;
@@ -103,7 +103,6 @@ export function updateDeployedSensors(sensors, delta) {
 export function drawDeployedSensors(g, sensors, cellPx, degreesToRadians) {
   g.clear();
   const milesToPx = cellPx / CONFIG.cellSizeMiles;
-  const maxRadiusPx = CONFIG.detectionRadiusMiles * milesToPx;
 
   for (const sensor of sensors) {
     if (sensor.retrievalStarted) continue;
@@ -111,6 +110,7 @@ export function drawDeployedSensors(g, sensors, cellPx, degreesToRadians) {
     const pos = cellToWorld(sensor.cell);
     const isBearing = sensor.type === 'bearing';
     const baseColor = isBearing ? 0xffcc00 : 0x00ff88;
+    const maxRadiusPx = getDetectionRadiusMiles(sensor.type) * milesToPx;
 
     drawSensorTraces(
       g,

@@ -12,9 +12,9 @@ export function isTargetInRange(droneCell, targetCell, radiusMiles = CONFIG.dete
   return cellDistanceMiles(droneCell, targetCell) <= radiusMiles;
 }
 
-export function findTargetsInRange(droneCell, targets) {
+export function findTargetsInRange(droneCell, targets, radiusMiles = CONFIG.detectionRadiusMiles) {
   return targets
-    .filter((t) => isTargetInRange(droneCell, t.cell))
+    .filter((t) => isTargetInRange(droneCell, t.cell, radiusMiles))
     .sort(
       (a, b) =>
         cellDistanceMiles(droneCell, a.cell) - cellDistanceMiles(droneCell, b.cell)
@@ -25,7 +25,11 @@ export function findTargetsInRange(droneCell, targets) {
  * Attempt detection and generate readings relative to the drone sensor position.
  */
 export function attemptDetection(type, droneCell, targets) {
-  const inRange = findTargetsInRange(droneCell, targets);
+  const radiusMiles =
+    type === 'range'
+      ? CONFIG.activeDetectionRadiusMiles
+      : CONFIG.detectionRadiusMiles;
+  const inRange = findTargetsInRange(droneCell, targets, radiusMiles);
   if (inRange.length === 0) {
     return { detected: false, reading: null, effectivenessResults: [] };
   }

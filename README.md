@@ -34,17 +34,17 @@ Or connect the repo in the Vercel dashboard. The project builds with `npm run bu
 
 The UI is **phone-first**: map on top, controls below, in a centered column (max 480px wide). The header shows your **balance**, **earned $**, and active **contracts** line (e.g. `2 × $500K contracts active ($1.0M total)`).
 
-1. You start with **$1M**. Each drone deploy or fire mission costs **$100K**. Contracts are defined in config — the demo has two **$500K** contracts with **no verification required** (payout on direct hit).
-2. Select **Bearing** or **Range** from the action panel.
+1. You start with **$1M**. **Passive** drones and fire missions cost **$100K**; **Active** drones cost **$25K**. Contracts are defined in config — the demo has two **$500K** contracts with **no verification required** (payout on direct hit).
+2. Select **Passive** (bearing) or **Active** (range) from the action panel.
 3. Tap a grid cell on the map to choose coordinates. The action button switches to **Confirm coords** — tap it again to execute (two-step confirm). Tap a different cell to change coordinates before confirming.
-4. The drone travels to the cell, attempts detection within a 3-mile radius, then returns.
+4. The drone travels to the cell, attempts detection within its scan radius (**Passive** 1.5 mi / **Active** 0.375 mi), then returns.
 5. **Fog of war (two layers):**
    - **Aerial recon** — unrevealed terrain shows a greyscale map; your base and drone flight path reveal color imagery (`initialRevealRadiusMiles` at start, `visualRangeMiles` while drones travel).
-   - **Sensor fog** — a dark overlay covers unscanned areas; it clears in a `detectionRadiusMiles` radius when a drone lands and scans.
-6. Drones leave behind a **deployed sensor** at their landing cell. Bearing sensors sweep a yellow beam across their range and pulse when aligned with a target; range sensors emit an expanding green ring that fades at max range and pulses when it reaches a target.
+   - **Sensor fog** — a dark overlay covers unscanned areas; it clears in the drone’s scan radius when it lands and scans.
+6. Drones leave behind a **deployed sensor** at their landing cell. **Passive** sensors sweep a yellow beam across their range and pulse when aligned with a target; **Active** sensors emit an expanding green ring that fades at max range and pulses when it reaches a target.
 7. **Fire Mission** is always available (unless game over or mid-action). Select it, tap a cell to aim, then **Confirm coords** to fire ($100K per attempt). Sensor readings help you decide where to click — hits are not guaranteed.
 8. The turret rotates toward your aim point, elevates for range, and fires. A **direct hit** destroys the unit. Contracts **without verification** pay out immediately on hit; contracts **with verification** require a drone to confirm the kill before payout.
-9. Drones report **combat effectiveness** (SALUTE) for each unit detected within 3 miles.
+9. Drones report **combat effectiveness** (SALUTE) for each unit detected within scan range.
 10. When **all** contracts are fulfilled, you win — **Mission Complete**.
 11. If your balance reaches **$0** before mission complete, you lose — **Game Over** and enemy positions are revealed on the map.
 
@@ -63,12 +63,14 @@ Edit `src/config.js`:
 | Key | Default | Description |
 |-----|---------|-------------|
 | `startingMoney` | 1000000 | Initial balance ($) |
-| `actionCost` | 100000 | Cost per drone deploy or fire mission ($) |
+| `actionCost` | 100000 | Cost for Passive drone or fire mission ($) |
+| `activeActionCost` | 25000 | Cost for Active drone ($) — 1/4 of Passive |
 | `contracts` | `[{ value: 500000, verificationRequired: false }, …]` | Contract list — one hidden target each |
 | `gridSize` | 100 | Grid cells per axis (10 mi × 10 mi) |
 | `cellSizeMiles` | 0.1 | Miles per grid cell |
 | `mapSizeMiles` | 10 | Map extent in miles |
-| `detectionRadiusMiles` | 1.5 | Drone sensor scan range (clears sensor fog on arrival) |
+| `detectionRadiusMiles` | 1.5 | Passive sensor scan range (clears sensor fog on arrival) |
+| `activeDetectionRadiusMiles` | 0.375 | Active sensor scan range — 1/4 of Passive |
 | `initialRevealRadiusMiles` | 0.5 | Aerial recon around artillery at game start (color map) |
 | `visualRangeMiles` | 0.25 | Aerial recon along drone travel path (color map) |
 | `droneTravelDurationMs` | 2000 | Round-trip travel time (each leg = half) |
@@ -136,8 +138,8 @@ If keys are missing, analytics is skipped silently (a dev-only console warning i
 | Event ID | When |
 |----------|------|
 | `Game:Start` | New game / scene restart |
-| `Drone:Deploy:Bearing` | Bearing drone confirmed (custom fields: `cellX`, `cellY`) |
-| `Drone:Deploy:Distance` | Distance drone confirmed (custom fields: `cellX`, `cellY`) |
+| `Drone:Deploy:Bearing` | Passive drone confirmed (custom fields: `cellX`, `cellY`) |
+| `Drone:Deploy:Distance` | Active drone confirmed (custom fields: `cellX`, `cellY`) |
 | `Fire:Complete` | Fire mission animation finished (`cellX`, `cellY`, `hit`) |
 | `Kill:Confirmed` | Sensor-confirmed kill / contract paid (value = payout $) |
 | `Game:Over:Money` | Balance reached $0 before mission complete |
