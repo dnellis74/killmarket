@@ -106,7 +106,6 @@ export default class MapScene extends Phaser.Scene {
     this.targetMarkers = [];
     this.spottedTargetMarkers = [];
     this.deployedSensors = [];
-    this.messageHideTimer = null;
   }
 
   preload() {
@@ -157,17 +156,7 @@ export default class MapScene extends Phaser.Scene {
     this.setupUI();
     this.readingGraphics = this.add.graphics().setDepth(5);
     this.deployedSensorGraphics = this.add.graphics().setDepth(7);
-    this.messageText = this.add
-      .text(8, 0, '', {
-        fontSize: '13px',
-        color: '#ffffff',
-        backgroundColor: '#000000cc',
-        padding: { x: 8, y: 5 },
-      })
-      .setOrigin(0, 1)
-      .setScrollFactor(0)
-      .setDepth(100)
-      .setVisible(false);
+    this.logEntries = [];
 
     this.layoutMapOverlay();
     this.scale.on('resize', () => {
@@ -906,16 +895,66 @@ export default class MapScene extends Phaser.Scene {
     });
   }
 
-  showMessage(text, durationMs = 4000) {
-    if (this.messageHideTimer) {
-      this.messageHideTimer.remove();
-      this.messageHideTimer = null;
-    }
-    this.messageText.setText(text).setVisible(true);
-    this.messageHideTimer = this.time.delayedCall(durationMs, () => {
-      this.messageText.setVisible(false);
-      this.messageHideTimer = null;
+  showMessage(text) {
+    this.logEntries.unshift({ text, ts: Date.now(), fresh: true });
+    this.renderLog();
+  }
+
+  renderLog() {
+    const list = ui('readings-list');
+    // Build combined list: free-text log entries + structured sensor readings,
+    // interleaved by timestamp, newest first.
+    const state = getState();
+
+    // Convert structured readings to display objects
+    const readingItems = state.readings.map((r) => {
+      const sensor = `(${r.sensorCell.x},${r.sensorCell.y})`;
+      let text = '';
+      let color = null;
+      let weight = null;
+
+      if (r.type === 'bearing') {
+        text = `📡 Bearing ${r.value.toFixed(1)}° from ${sensor}`;
+      } else if (r.type === 'range') {
+        text = `📡 Range ${r.value.toFixed(2)} mi from ${sensor}`;
+      } else if (r.type === 'effectiveness') {
+        const display = getEffectivenessDisplay(r.value);
+        const label = display ? `${display.label} (${display.percentRange})` : r.value;
+        text = `⚠️ Effectiveness: ${label} ${sensor}`;
+        color = display?.color;
+        weight = '600';
+      } else if (r.type === 'contract') {
+        const target = state.targets.find((t) => t.id === r.targetId);
+        text = target?.verificationRequired
+          ? `✅ Kill confirmed — ${formatMoney(r.value)} contract awarded`
+          : `✅ Contract awarded — ${formatMoney(r.value)}`;
+        color = '#44ff88';
+        weight = '700';
+      } else if (r.type === 'fire') {
+        text = `🔥 Fire mission at ${sensor}`;
+      }
+      return { text, color, weight, ts: r.timestamp };
     });
+
+    // Merge and sort newest first
+    const all = [
+      ...this.logEntries.map((e) => ({ text: e.text, color: null, weight: null, ts: e.ts, fresh: e.fresh })),
+      ...readingItems,
+    ].sort((a, b) => b.ts - a.ts);
+
+    list.innerHTML = '';
+    all.forEach((item) => {
+      if (!item.text) return;
+      const li = document.createElement('li');
+      li.textContent = item.text;
+      if (item.color) li.style.color = item.color;
+      if (item.weight) li.style.fontWeight = item.weight;
+      if (item.fresh) li.classList.add('log-fresh');
+      list.appendChild(li);
+    });
+
+    // Clear fresh flags after render
+    this.logEntries.forEach((e) => { e.fresh = false; });
   }
 
   revealTargets() {
@@ -968,33 +1007,7 @@ export default class MapScene extends Phaser.Scene {
     rangeBtn.disabled = busy || pending?.type === 'fire';
     fireBtn.disabled = busy || (pending !== null && pending.type !== 'fire');
 
-    const list = ui('readings-list');
-    list.innerHTML = '';
-    state.readings.forEach((r) => {
-      const li = document.createElement('li');
-      const sensor = `sensor ${r.sensorCell.x},${r.sensorCell.y}`;
-      if (r.type === 'bearing') {
-        li.textContent = `Bearing: ${r.value.toFixed(1)}° (${sensor})`;
-      } else if (r.type === 'range') {
-        li.textContent = `Range: ${r.value.toFixed(2)} mi (${sensor})`;
-      } else if (r.type === 'effectiveness') {
-        const display = getEffectivenessDisplay(r.value);
-        const label = display ? display.label : r.value;
-        li.textContent = `Effectiveness: ${label} (${sensor})`;
-        if (display) {
-          li.style.color = display.color;
-          li.style.fontWeight = '600';
-        }
-      } else if (r.type === 'contract') {
-        const target = state.targets.find((t) => t.id === r.targetId);
-        li.textContent = target?.verificationRequired
-          ? `Kill confirmed — ${formatMoney(r.value)} contract awarded`
-          : `Contract awarded — ${formatMoney(r.value)}`;
-      } else if (r.type === 'fire') {
-        li.textContent = `Fire mission complete at (${r.sensorCell.x}, ${r.sensorCell.y})`;
-      }
-      list.appendChild(li);
-    });
+    this.renderLog();
 
     const gameOverEl = ui('game-over');
     if (isVictory()) {

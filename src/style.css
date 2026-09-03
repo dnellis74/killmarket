@@ -262,6 +262,18 @@ button.confirm-ready .btn-cost {
   border-bottom: none;
 }
 
+#readings-list li.log-fresh {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  animation: log-fade 3s ease forwards;
+}
+
+@keyframes log-fade {
+  0%   { background: rgba(255, 255, 255, 0.12); }
+  100% { background: transparent; }
+}
+
 .game-over {
   flex-shrink: 0;
   background: rgba(80, 20, 20, 0.45);
