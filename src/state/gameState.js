@@ -46,7 +46,10 @@ export function initGameState() {
     drones: [],
     targets: targetCells.map((cell, i) => createTarget(cell, contracts[i])),
     playerCell: { ...CONFIG.playerCell },
-    revealedCells: initRevealedCells(
+    /** Dark overlay — cleared when a sensor lands and scans. */
+    sensorRevealedCells: new Set(),
+    /** Aerial recon — greyscale→color; cleared from base and along drone flight path. */
+    aerialRevealedCells: initRevealedCells(
       CONFIG.playerCell,
       CONFIG.initialRevealRadiusMiles
     ),
@@ -217,8 +220,12 @@ export function getContractSummary() {
   return { count: active.length, totalValue };
 }
 
-export function isCellRevealed(cell) {
-  return isRevealed(getState().revealedCells, cell);
+export function isCellSensorRevealed(cell) {
+  return isRevealed(getState().sensorRevealedCells, cell);
+}
+
+export function isCellAerialRevealed(cell) {
+  return isRevealed(getState().aerialRevealedCells, cell);
 }
 
 export function revealTargetVisually(targetId) {

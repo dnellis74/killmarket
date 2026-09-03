@@ -21,4 +21,6 @@ export const CONFIG = {
   playerCell: { x: 112, y: 112 },
   backdropKey: 'map-backdrop',
   backdropUrl: '/map-backdrop-square.jpg',
+  backdropGreyscaleKey: 'map-backdrop-greyscale',
+  backdropGreyscaleUrl: '/map-backdrop-square-greyscale.jpg',
 };

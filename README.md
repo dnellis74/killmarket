@@ -38,7 +38,9 @@ The UI is **phone-first**: map on top, controls below, in a centered column (max
 2. Select **Bearing** or **Range** from the action panel.
 3. Tap a grid cell on the map to choose coordinates. The action button switches to **Confirm coords** — tap it again to execute (two-step confirm). Tap a different cell to change coordinates before confirming.
 4. The drone travels to the cell, attempts detection within a 3-mile radius, then returns.
-5. **Fog of war:** the map starts with a 1-mile reveal around your artillery position. As the drone travels, it clears fog in a 1-mile visual range along its path. On landing, the 3-mile sensor scan clears fog in that radius.
+5. **Fog of war (two layers):**
+   - **Aerial recon** — unrevealed terrain shows a greyscale map; your base and drone flight path reveal color imagery (`initialRevealRadiusMiles` at start, `visualRangeMiles` while drones travel).
+   - **Sensor fog** — a dark overlay covers unscanned areas; it clears in a `detectionRadiusMiles` radius when a drone lands and scans.
 6. Drones leave behind a **deployed sensor** at their landing cell. Bearing sensors sweep a yellow beam across their range and pulse when aligned with a target; range sensors emit an expanding green ring that fades at max range and pulses when it reaches a target.
 7. **Fire Mission** is always available (unless game over or mid-action). Select it, tap a cell to aim, then **Confirm coords** to fire ($100K per attempt). Sensor readings help you decide where to click — hits are not guaranteed.
 8. The turret rotates toward your aim point, elevates for range, and fires. A **direct hit** destroys the unit. Contracts **without verification** pay out immediately on hit; contracts **with verification** require a drone to confirm the kill before payout.
@@ -66,9 +68,9 @@ Edit `src/config.js`:
 | `gridSize` | 100 | Grid cells per axis (10 mi × 10 mi) |
 | `cellSizeMiles` | 0.1 | Miles per grid cell |
 | `mapSizeMiles` | 10 | Map extent in miles |
-| `detectionRadiusMiles` | 1.5 | Drone sensor scan range (also clears fog on arrival) |
-| `initialRevealRadiusMiles` | 0.5 | Fog cleared around artillery at game start |
-| `visualRangeMiles` | 0.25 | Direct line of sight / fog cleared along drone travel path |
+| `detectionRadiusMiles` | 1.5 | Drone sensor scan range (clears sensor fog on arrival) |
+| `initialRevealRadiusMiles` | 0.5 | Aerial recon around artillery at game start (color map) |
+| `visualRangeMiles` | 0.25 | Aerial recon along drone travel path (color map) |
 | `droneTravelDurationMs` | 2000 | Round-trip travel time (each leg = half) |
 | `muzzleVelocity` | 800 | m/s, used in elevation formula |
 | `gravity` | 9.8 | m/s² |

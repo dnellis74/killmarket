@@ -111,16 +111,43 @@ export default class MapScene extends Phaser.Scene {
 
   preload() {
     this.load.image(CONFIG.backdropKey, CONFIG.backdropUrl);
+    this.load.image(
+      CONFIG.backdropGreyscaleKey,
+      CONFIG.backdropGreyscaleUrl
+    );
   }
 
   create() {
     initGameState();
     trackGameStart();
     this.deployedSensors = [];
+    this.aerialMaskCanvas = document.createElement('canvas');
+    this.aerialMaskCanvas.width = WORLD_SIZE;
+    this.aerialMaskCanvas.height = WORLD_SIZE;
+    this.aerialMaskCtx = this.aerialMaskCanvas.getContext('2d');
+    this.textures.addCanvas('aerial-mask', this.aerialMaskCanvas);
+
     this.add
-      .image(WORLD_SIZE / 2, WORLD_SIZE / 2, CONFIG.backdropKey)
+      .image(WORLD_SIZE / 2, WORLD_SIZE / 2, CONFIG.backdropGreyscaleKey)
       .setDisplaySize(WORLD_SIZE, WORLD_SIZE)
       .setDepth(0);
+    this.colorBackdrop = this.add
+      .image(WORLD_SIZE / 2, WORLD_SIZE / 2, CONFIG.backdropKey)
+      .setDisplaySize(WORLD_SIZE, WORLD_SIZE)
+      .setDepth(0.5);
+    this.aerialMaskImage = this.make
+      .image({
+        x: WORLD_SIZE / 2,
+        y: WORLD_SIZE / 2,
+        key: 'aerial-mask',
+        add: false,
+      })
+      .setOrigin(0.5)
+      .setDisplaySize(WORLD_SIZE, WORLD_SIZE);
+    this.drawAerialMap();
+    this.colorBackdrop.setMask(
+      new Phaser.Display.Masks.BitmapMask(this, this.aerialMaskImage)
+    );
     this.drawGridOverlay();
     this.fogGraphics = this.add.graphics().setDepth(6);
     this.drawFog();
@@ -170,30 +197,41 @@ export default class MapScene extends Phaser.Scene {
     }
   }
 
+  drawAerialMap() {
+    const ctx = this.aerialMaskCtx;
+    ctx.clearRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+    ctx.fillStyle = '#ffffff';
+    const aerial = getState().aerialRevealedCells;
+    for (const key of aerial) {
+      const [x, y] = key.split(',').map(Number);
+      ctx.fillRect(x * cellPx, y * cellPx, cellPx, cellPx);
+    }
+    this.textures.get('aerial-mask').refresh();
+  }
+
   drawFog() {
     const g = this.fogGraphics;
     g.clear();
     g.fillStyle(0x0a0a14, 0.72);
 
-    const revealed = getState().revealedCells;
+    const sensor = getState().sensorRevealedCells;
     for (let x = 0; x < gridSize; x++) {
       for (let y = 0; y < gridSize; y++) {
-        if (!isRevealed(revealed, { x, y })) {
+        if (!isRevealed(sensor, { x, y })) {
           g.fillRect(x * cellPx, y * cellPx, cellPx, cellPx);
         }
       }
     }
   }
 
-  revealFogAroundWorld(worldX, worldY, radiusMiles) {
-    const anyNew = revealCellsInRangeFromWorld(
-      getState().revealedCells,
+  revealAerialAroundWorld(worldX, worldY, radiusMiles) {
+    revealCellsInRangeFromWorld(
+      getState().aerialRevealedCells,
       worldX,
       worldY,
       radiusMiles
     );
-    if (anyNew) this.drawFog();
-    return anyNew;
+    this.drawAerialMap();
   }
 
   spotTargetsInRange(centerCell, radiusMiles) {
@@ -511,7 +549,7 @@ export default class MapScene extends Phaser.Scene {
     if (pending.cell) {
       const rangeNote =
         pending.type === 'bearing' || pending.type === 'range'
-          ? ` Scan radius: ${CONFIG.detectionRadiusMiles} mi (clears fog).`
+          ? ` Scan radius: ${CONFIG.detectionRadiusMiles} mi (clears sensor fog).`
           : '';
       status.textContent = `${name}: (${pending.cell.x}, ${pending.cell.y}) — tap map to change, press Confirm coords to execute.${rangeNote}`;
     } else {
@@ -553,7 +591,7 @@ export default class MapScene extends Phaser.Scene {
       duration: halfDuration,
       ease: 'Sine.easeInOut',
       onUpdate: () => {
-        this.revealFogAroundWorld(sprite.x, sprite.y, CONFIG.visualRangeMiles);
+        this.revealAerialAroundWorld(sprite.x, sprite.y, CONFIG.visualRangeMiles);
         this.spotTargetsInRange(
           worldToCell(sprite.x, sprite.y),
           CONFIG.visualRangeMiles
@@ -568,7 +606,11 @@ export default class MapScene extends Phaser.Scene {
   onDroneArrived(drone, droneCell, sprite, returnDuration) {
     const state = getState();
 
-    revealCircle(state.revealedCells, droneCell, CONFIG.detectionRadiusMiles);
+    revealCircle(
+      state.sensorRevealedCells,
+      droneCell,
+      CONFIG.detectionRadiusMiles
+    );
     this.drawFog();
     this.spotTargetsInRange(droneCell, CONFIG.visualRangeMiles);
 
@@ -644,7 +686,7 @@ export default class MapScene extends Phaser.Scene {
       duration: returnDuration,
       ease: 'Sine.easeInOut',
       onUpdate: () => {
-        this.revealFogAroundWorld(sprite.x, sprite.y, CONFIG.visualRangeMiles);
+        this.revealAerialAroundWorld(sprite.x, sprite.y, CONFIG.visualRangeMiles);
         this.spotTargetsInRange(
           worldToCell(sprite.x, sprite.y),
           CONFIG.visualRangeMiles
