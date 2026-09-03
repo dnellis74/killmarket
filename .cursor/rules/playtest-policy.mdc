@@ -1,0 +1,26 @@
+---
+description: Killmarket is a visual game — human playtests; agent verifies code/build only
+alwaysApply: true
+---
+
+# Playtest policy
+
+Killmarket is a **visual video game**. The human evaluates playability, feel, and visuals first.
+
+## Do (without being asked)
+
+- Verify **code quality** (consistency, correctness, focused diffs)
+- Verify **builds** (`npm run build`) when changes could break the pipeline
+- Prefer small, reviewable changes that match existing patterns
+
+## Do not (unless the human explicitly asks)
+
+- Open the app in a browser / IDE browser to “try it”
+- Drive UI clicks, deploy drones, fire missions, or other in-game flows to QA
+- Screenshot or screen-record gameplay to judge look/feel
+- Spend time on playability judgment (“feels good”, “arc looks right on map”)
+
+## When reporting done
+
+- Summarize what changed and how to try it
+- Leave playtesting to the human; only run interactive product tests when asked

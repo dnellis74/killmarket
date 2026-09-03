@@ -72,10 +72,15 @@ function formatMoney(amount) {
   return `$${amount}`;
 }
 
-function formatSensorReading(type, value) {
-  return type === 'bearing'
-    ? `Passive ${value.toFixed(1)}°`
-    : `Active ${value.toFixed(2)} mi`;
+function formatSensorReading(type, value, uncertaintyDeg = null) {
+  if (type === 'bearing') {
+    if (uncertaintyDeg != null && uncertaintyDeg > 0.5) {
+      const arc = uncertaintyDeg * 2;
+      return `Passive ${value.toFixed(0)}° ±${uncertaintyDeg.toFixed(0)}° (${arc.toFixed(0)}° arc)`;
+    }
+    return `Passive ${value.toFixed(1)}°`;
+  }
+  return `Active ${value.toFixed(2)} mi`;
 }
 
 function formatDroneLabel(type) {
@@ -628,7 +633,8 @@ export default class MapScene extends Phaser.Scene {
       createDeployedSensor(
         drone.type,
         droneCell,
-        detected && reading ? reading.value : null
+        detected && reading ? reading.value : null,
+        detected && reading ? reading.uncertaintyDeg : null
       )
     );
 
@@ -636,7 +642,11 @@ export default class MapScene extends Phaser.Scene {
       addReading(reading);
       updateDrone(drone.id, { status: 'returning', resultReadingId: reading.id });
 
-      const readingDetail = formatSensorReading(drone.type, reading.value);
+      const readingDetail = formatSensorReading(
+        drone.type,
+        reading.value,
+        reading.uncertaintyDeg
+      );
 
       const effParts = [];
       let contractsPaid = 0;
@@ -929,7 +939,10 @@ export default class MapScene extends Phaser.Scene {
       let weight = null;
 
       if (r.type === 'bearing') {
-        text = `📡 Passive ${r.value.toFixed(1)}° from ${sensor}`;
+        text =
+          r.uncertaintyDeg != null && r.uncertaintyDeg > 0.5
+            ? `📡 Passive ${r.value.toFixed(0)}° ±${r.uncertaintyDeg.toFixed(0)}° from ${sensor}`
+            : `📡 Passive ${r.value.toFixed(1)}° from ${sensor}`;
       } else if (r.type === 'range') {
         text = `📡 Active ${r.value.toFixed(2)} mi from ${sensor}`;
       } else if (r.type === 'effectiveness') {

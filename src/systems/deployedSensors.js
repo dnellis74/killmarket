@@ -4,12 +4,18 @@ import { cellToWorld } from './grid.js';
 const BEARING_SWEEP_RATE = 0.045; // degrees per ms
 const BEARING_CYCLE_MS = 360 / BEARING_SWEEP_RATE;
 const RANGE_CYCLE_MS = 2600;
-const PING_ZONE_BEARING_DEG = 10;
+/** Fallback half-width when a legacy sensor has no uncertaintyDeg. */
+const DEFAULT_BEARING_HALF_WIDTH_DEG = 5;
 export const MAX_CYCLES_WITHOUT_CONTACT = 4;
 
 function angleDiff(a, b) {
   let d = Math.abs(a - b) % 360;
   return d > 180 ? 360 - d : d;
+}
+
+/** Bearing 0° = north, clockwise → Phaser/canvas angle (0 = east, clockwise). */
+function bearingToPhaserRad(bearingDeg, degreesToRadians) {
+  return degreesToRadians(bearingDeg) - Math.PI / 2;
 }
 
 /** @typedef {'bearing' | 'range'} DeployedSensorType */
@@ -18,12 +24,23 @@ function angleDiff(a, b) {
  * @param {DeployedSensorType} type
  * @param {{ x: number, y: number }} cell
  * @param {number | null} readingValue bearing degrees or range miles when contact made
+ * @param {number | null} [uncertaintyDeg] passive: half-width of ping/display arc
  */
-export function createDeployedSensor(type, cell, readingValue = null) {
+export function createDeployedSensor(
+  type,
+  cell,
+  readingValue = null,
+  uncertaintyDeg = null
+) {
   return {
     type,
     cell: { ...cell },
     readingValue,
+    /** Passive: half-width of uncertainty arc (full arc = 2×). */
+    uncertaintyDeg:
+      type === 'bearing' && readingValue != null
+        ? (uncertaintyDeg ?? DEFAULT_BEARING_HALF_WIDTH_DEG)
+        : null,
     sweepAngle: Math.random() * 360,
     ringPhase: 0,
     pulseGlow: 0,
@@ -31,13 +48,17 @@ export function createDeployedSensor(type, cell, readingValue = null) {
     elapsedMs: 0,
     markedForRetrieval: false,
     retrievalStarted: false,
-    /** @type {{ fade: number }[]} */
+    /** @type {{ fade: number, halfWidthDeg?: number }[]} */
     traces: [],
   };
 }
 
 function cycleMsFor(sensor) {
   return sensor.type === 'bearing' ? BEARING_CYCLE_MS : RANGE_CYCLE_MS;
+}
+
+function bearingHalfWidth(sensor) {
+  return sensor.uncertaintyDeg ?? DEFAULT_BEARING_HALF_WIDTH_DEG;
 }
 
 /**
@@ -53,10 +74,11 @@ export function updateDeployedSensors(sensors, delta) {
     if (sensor.type === 'bearing') {
       sensor.sweepAngle = (sensor.sweepAngle + delta * BEARING_SWEEP_RATE) % 360;
       if (sensor.readingValue != null) {
+        const halfWidth = bearingHalfWidth(sensor);
         const inPingZone =
-          angleDiff(sensor.sweepAngle, sensor.readingValue) < PING_ZONE_BEARING_DEG;
+          angleDiff(sensor.sweepAngle, sensor.readingValue) < halfWidth;
         if (inPingZone && !sensor.wasInPingZone) {
-          sensor.traces.push({ fade: 1 });
+          sensor.traces.push({ fade: 1, halfWidthDeg: halfWidth });
           sensor.pulseGlow = 1;
         }
         sensor.wasInPingZone = inPingZone;
@@ -138,6 +160,48 @@ export function drawDeployedSensors(g, sensors, cellPx, degreesToRadians) {
   }
 }
 
+function drawBearingArc(
+  g,
+  pos,
+  centerBearingDeg,
+  halfWidthDeg,
+  radiusPx,
+  degreesToRadians,
+  { fillColor, fillAlpha, strokeColor, strokeAlpha, strokeWidth }
+) {
+  if (halfWidthDeg < 0.5) {
+    const rad = bearingToPhaserRad(centerBearingDeg, degreesToRadians);
+    const tx = pos.x + Math.cos(rad) * radiusPx;
+    const ty = pos.y + Math.sin(rad) * radiusPx;
+    if (strokeColor != null) {
+      g.lineStyle(strokeWidth ?? 3, strokeColor, strokeAlpha ?? 1);
+      g.lineBetween(pos.x, pos.y, tx, ty);
+    }
+    return;
+  }
+
+  const startRad = bearingToPhaserRad(centerBearingDeg - halfWidthDeg, degreesToRadians);
+  const endRad = bearingToPhaserRad(centerBearingDeg + halfWidthDeg, degreesToRadians);
+
+  if (fillColor != null && fillAlpha > 0) {
+    g.fillStyle(fillColor, fillAlpha);
+    g.beginPath();
+    g.moveTo(pos.x, pos.y);
+    g.arc(pos.x, pos.y, radiusPx, startRad, endRad, false);
+    g.closePath();
+    g.fillPath();
+  }
+
+  if (strokeColor != null && strokeAlpha > 0) {
+    g.lineStyle(strokeWidth ?? 2, strokeColor, strokeAlpha);
+    g.beginPath();
+    g.moveTo(pos.x, pos.y);
+    g.arc(pos.x, pos.y, radiusPx, startRad, endRad, false);
+    g.closePath();
+    g.strokePath();
+  }
+}
+
 function drawSensorTraces(g, pos, sensor, maxRadiusPx, milesToPx, degreesToRadians, color) {
   if (sensor.readingValue == null || sensor.traces.length === 0) return;
 
@@ -146,13 +210,21 @@ function drawSensorTraces(g, pos, sensor, maxRadiusPx, milesToPx, degreesToRadia
     if (alpha <= 0) continue;
 
     if (sensor.type === 'bearing') {
-      const targetRad = degreesToRadians(sensor.readingValue);
-      const tx = pos.x + Math.sin(targetRad) * maxRadiusPx;
-      const ty = pos.y - Math.cos(targetRad) * maxRadiusPx;
-      g.lineStyle(3, color, alpha);
-      g.lineBetween(pos.x, pos.y, tx, ty);
-      g.lineStyle(1.5, 0xffffff, alpha * 0.35);
-      g.lineBetween(pos.x, pos.y, tx, ty);
+      const halfWidth = trace.halfWidthDeg ?? bearingHalfWidth(sensor);
+      drawBearingArc(g, pos, sensor.readingValue, halfWidth, maxRadiusPx, degreesToRadians, {
+        fillColor: color,
+        fillAlpha: alpha * 0.28,
+        strokeColor: color,
+        strokeAlpha: alpha * 0.85,
+        strokeWidth: 2.5,
+      });
+      drawBearingArc(g, pos, sensor.readingValue, halfWidth, maxRadiusPx, degreesToRadians, {
+        fillColor: null,
+        fillAlpha: 0,
+        strokeColor: 0xffffff,
+        strokeAlpha: alpha * 0.3,
+        strokeWidth: 1.25,
+      });
     } else {
       const targetPx = sensor.readingValue * milesToPx;
       g.lineStyle(2.5, color, alpha);
@@ -164,14 +236,23 @@ function drawSensorTraces(g, pos, sensor, maxRadiusPx, milesToPx, degreesToRadia
 }
 
 function drawBearingSensor(g, pos, sensor, maxRadiusPx, degreesToRadians) {
-  const angleRad = degreesToRadians(sensor.sweepAngle);
-  const endX = pos.x + Math.sin(angleRad) * maxRadiusPx;
-  const endY = pos.y - Math.cos(angleRad) * maxRadiusPx;
+  const angleRad = bearingToPhaserRad(sensor.sweepAngle, degreesToRadians);
+  const endX = pos.x + Math.cos(angleRad) * maxRadiusPx;
+  const endY = pos.y + Math.sin(angleRad) * maxRadiusPx;
 
   g.lineStyle(2, 0xffcc00, 0.55);
   g.lineBetween(pos.x, pos.y, endX, endY);
 
-  if (sensor.pulseGlow > 0) {
+  if (sensor.pulseGlow > 0 && sensor.readingValue != null) {
+    const halfWidth = bearingHalfWidth(sensor);
+    drawBearingArc(g, pos, sensor.readingValue, halfWidth, maxRadiusPx, degreesToRadians, {
+      fillColor: 0xffcc00,
+      fillAlpha: sensor.pulseGlow * 0.35,
+      strokeColor: 0xffffff,
+      strokeAlpha: sensor.pulseGlow * 0.65,
+      strokeWidth: 3,
+    });
+  } else if (sensor.pulseGlow > 0) {
     g.lineStyle(5, 0xffffff, sensor.pulseGlow * 0.65);
     g.lineBetween(pos.x, pos.y, endX, endY);
     g.fillStyle(0xffcc00, sensor.pulseGlow * 0.35);

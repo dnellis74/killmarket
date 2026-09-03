@@ -1,4 +1,4 @@
-import { CONFIG } from '../config.js';
+import { CONFIG, getPassiveBearingHalfWidthDeg } from '../config.js';
 import { createReading } from '../state/gameState.js';
 import {
   applyDetectionEffectiveness,
@@ -23,6 +23,7 @@ export function findTargetsInRange(droneCell, targets, radiusMiles = CONFIG.dete
 
 /**
  * Attempt detection and generate readings relative to the drone sensor position.
+ * Passive bearings include range-based angular uncertainty (wider arc farther out).
  */
 export function attemptDetection(type, droneCell, targets) {
   const radiusMiles =
@@ -35,12 +36,22 @@ export function attemptDetection(type, droneCell, targets) {
   }
 
   const closest = inRange[0];
-  const value =
-    type === 'bearing'
-      ? computeBearing(droneCell, closest.cell)
-      : cellDistanceMiles(droneCell, closest.cell);
+  const distanceMiles = cellDistanceMiles(droneCell, closest.cell);
 
-  const reading = createReading(type, value, droneCell, closest.id);
+  let value;
+  let uncertaintyDeg = null;
+
+  if (type === 'bearing') {
+    // Center of the uncertainty lobe; half-width grows with range (90° arc at max).
+    value = computeBearing(droneCell, closest.cell);
+    uncertaintyDeg = getPassiveBearingHalfWidthDeg(distanceMiles);
+  } else {
+    value = distanceMiles;
+  }
+
+  const reading = createReading(type, value, droneCell, closest.id, {
+    uncertaintyDeg,
+  });
 
   const effectivenessResults = inRange.map((target) => {
     const effectiveness = getReportedEffectiveness(target);

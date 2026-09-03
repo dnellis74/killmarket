@@ -41,7 +41,7 @@ The UI is **phone-first**: map on top, controls below, in a centered column (max
 5. **Fog of war (two layers):**
    - **Aerial recon** — unrevealed terrain shows a greyscale map; your base and drone flight path reveal color imagery (`initialRevealRadiusMiles` at start, `visualRangeMiles` while drones travel).
    - **Sensor fog** — a dark overlay covers unscanned areas; it clears in the drone’s scan radius when it lands and scans.
-6. Drones leave behind a **deployed sensor** at their landing cell. **Passive** sensors sweep a yellow beam across their range and pulse when aligned with a target; **Active** sensors emit an expanding green ring that fades at max range and pulses when it reaches a target.
+6. Drones leave behind a **deployed sensor** at their landing cell. **Passive** sensors sweep a yellow beam across their range and pulse when aligned with a target — accuracy degrades with range (tight arc nearby, up to a **90°** ping lobe at max range); **Active** sensors emit an expanding green ring that fades at max range and pulses when it reaches a target.
 7. **Fire Mission** is always available (unless game over or mid-action). Select it, tap a cell to aim, then **Confirm coords** to fire ($100K per attempt). Sensor readings help you decide where to click — hits are not guaranteed.
 8. The turret rotates toward your aim point, elevates for range, and fires. A **direct hit** destroys the unit. Contracts **without verification** pay out immediately on hit; contracts **with verification** require a drone to confirm the kill before payout.
 9. Drones report **combat effectiveness** (SALUTE) for each unit detected within scan range.
@@ -71,6 +71,8 @@ Edit `src/config.js`:
 | `mapSizeMiles` | 10 | Map extent in miles |
 | `detectionRadiusMiles` | 1.5 | Passive sensor scan range (clears sensor fog on arrival) |
 | `activeDetectionRadiusMiles` | 0.375 | Active sensor scan range — 1/4 of Passive |
+| `passiveBearingMinHalfWidthDeg` | 5 | Passive ping half-width near the sensor (~10° arc) |
+| `passiveBearingMaxHalfWidthDeg` | 45 | Passive ping half-width at max range (90° arc) |
 | `initialRevealRadiusMiles` | 0.5 | Aerial recon around artillery at game start (color map) |
 | `visualRangeMiles` | 0.25 | Aerial recon along drone travel path (color map) |
 | `droneTravelDurationMs` | 2000 | Round-trip travel time (each leg = half) |

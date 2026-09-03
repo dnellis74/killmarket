@@ -146,7 +146,14 @@ export function canFire() {
   );
 }
 
-export function createReading(type, value, sensorCell, targetId = null) {
+/**
+ * @param {string} type
+ * @param {number} value
+ * @param {{ x: number, y: number }} sensorCell
+ * @param {string | null} [targetId]
+ * @param {{ uncertaintyDeg?: number | null }} [extras]
+ */
+export function createReading(type, value, sensorCell, targetId = null, extras = {}) {
   return {
     id: generateId(),
     type,
@@ -154,6 +161,8 @@ export function createReading(type, value, sensorCell, targetId = null) {
     timestamp: Date.now(),
     sensorCell: { ...sensorCell },
     targetId,
+    /** Passive bearing: half-width of uncertainty arc (degrees). */
+    uncertaintyDeg: extras.uncertaintyDeg ?? null,
   };
 }
 
