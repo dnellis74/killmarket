@@ -46,7 +46,7 @@ The UI is **phone-first**: map on top, controls below, in a centered column (max
 8. The turret rotates toward your aim point, elevates for range, and fires. A **direct hit** destroys the unit. Contracts **without verification** pay out immediately on hit; contracts **with verification** require a drone to confirm the kill before payout.
 9. Drones report **combat effectiveness** (SALUTE) for each unit detected within scan range.
 10. When **all** contracts are fulfilled, you win — **Mission Complete**.
-11. If your balance reaches **$0** before mission complete, you lose — **Game Over** and enemy positions are revealed on the map.
+11. If your balance reaches **$0** before mission complete, you lose — **Budget Exhausted** and enemy positions are revealed on the map.
 
 ## Controls
 
@@ -66,21 +66,27 @@ Edit `src/config.js`:
 | `actionCost` | 100000 | Cost for Passive drone or fire mission ($) |
 | `activeActionCost` | 25000 | Cost for Active drone ($) — 1/4 of Passive |
 | `contracts` | `[{ value: 500000, verificationRequired: false }, …]` | Contract list — one hidden target each |
-| `gridSize` | 100 | Grid cells per axis (10 mi × 10 mi) |
-| `cellSizeMiles` | 0.1 | Miles per grid cell |
-| `mapSizeMiles` | 10 | Map extent in miles |
-| `detectionRadiusMiles` | 1.5 | Passive sensor scan range (clears sensor fog on arrival) |
-| `activeDetectionRadiusMiles` | 0.375 | Active sensor scan range — 1/4 of Passive |
-| `passiveBearingMinHalfWidthDeg` | 5 | Passive ping half-width near the sensor (~10° arc) |
-| `passiveBearingMaxHalfWidthDeg` | 45 | Passive ping half-width at max range (90° arc) |
-| `initialRevealRadiusMiles` | 0.5 | Aerial recon around artillery at game start (color map) |
-| `visualRangeMiles` | 0.25 | Aerial recon along drone travel path (color map) |
+| `gridSize` | 128 | Grid cells per axis |
+| `cellSizeMiles` | 0.05 | Miles per grid cell |
+| `mapSizeMiles` | 6.4 | Map extent in miles |
+| `initialRevealRadiusMiles` | 0.5 | Aerial recon around artillery at game start |
+| `visualRangeMiles` | 0.25 | Aerial recon along drone travel path |
 | `droneTravelDurationMs` | 2000 | Round-trip travel time (each leg = half) |
 | `muzzleVelocity` | 800 | m/s, used in elevation formula |
 | `gravity` | 9.8 | m/s² |
 | `milesToMeters` | 1609.34 | Conversion factor |
-| `playerCell` | `{ x: 10, y: 50 }` | Fixed artillery position |
-| `cellPx` | 10 | Pixels per grid cell on screen |
+| `playerCell` | `{ x: 112, y: 112 }` | Fixed artillery position |
+| `cellPx` | 4 | Pixels per grid cell on screen |
+
+### Sensors (`src/data/sensorDefs.js`)
+
+Gameplay properties (range, bearing uncertainty, empty-cycle retrieval) are **data-driven** and separate from sweep/ring animation in `systems/deployedSensors.js`.
+
+| Def field | Passive (`bearing`) | Active (`range`) |
+|-----------|--------------------|------------------|
+| `rangeMiles` | 1.5 | 0.375 |
+| `bearingUncertainty` | min 5° / max 45° half-width | — |
+| `maxCyclesWithoutContact` | 4 | 4 |
 
 ## Combat Effectiveness (SALUTE)
 
@@ -101,16 +107,17 @@ Current rules: detected untouched units report **Fully Effective**; fire hits se
 src/
   main.js                  — Vite/Phaser bootstrap
   analytics.js             — GameAnalytics init and event helpers
-  config.js                — Configurable game constants
+  config.js                — Economy, map, ballistics constants
+  data/sensorDefs.js       — Data-driven sensor range / accuracy / retrieval
   style.css                — UI overlay styles (phone-first layout)
   scenes/MapScene.js       — Grid, camera, player, drones, UI, fire animation
   systems/grid.js          — Cell/world coordinate conversion, bearing, distance
-  systems/sensors.js       — Drone detection and effectiveness reporting
+  systems/sensors.js       — Drone detection (reads sensorDefs)
   systems/triangulation.js — Reading triangulation (intel visualization hints)
   systems/effectiveness.js — SALUTE effectiveness levels and helpers
   systems/ballistics.js    — Elevation formula and unit conversion
   systems/fogOfWar.js      — Revealed cells, fog clearing on travel and scan
-  systems/deployedSensors.js — Left-behind sensor sweep and pulse animations
+  systems/deployedSensors.js — Deployed sensor animation only (sweep / ring / traces)
   systems/speech.js        — meSpeak.js TTS (visual contact callouts)
   state/gameState.js       — Money, contracts, readings, targets, drone registry
 public/
@@ -122,7 +129,10 @@ public/
 Killmarket uses [meSpeak.js](https://www.masswerk.at/mespeak/) for radio-style callouts. Assets are vendored under `public/mespeak/` (GPL-3.0; see `public/mespeak/License.txt`).
 
 Currently spoken:
-- **Visual contact** — `tally opfor at {x}, {y}` when a drone first spots a target in visual range
+- **Visual contact** — when a drone first spots a target in visual range
+- **Target neutralized** — on a fire hit that finds a target, or sensor kill confirmation
+- **Victory** — `mission complete. request retrieval` when all contracts are fulfilled
+- **Budget exhausted** — `budget exhausted` when the player runs out of money
 
 
 ## Analytics (GameAnalytics)

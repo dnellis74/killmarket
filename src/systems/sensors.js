@@ -1,4 +1,8 @@
-import { CONFIG, getPassiveBearingHalfWidthDeg } from '../config.js';
+import {
+  getSensorDef,
+  getDetectionRadiusMiles,
+  getBearingUncertaintyHalfWidthDeg,
+} from '../data/sensorDefs.js';
 import { createReading } from '../state/gameState.js';
 import {
   applyDetectionEffectiveness,
@@ -8,11 +12,19 @@ import { cellDistanceMiles, computeBearing } from './grid.js';
 
 export { cellDistanceMiles, computeBearing, cellToWorld, worldToCell } from './grid.js';
 
-export function isTargetInRange(droneCell, targetCell, radiusMiles = CONFIG.detectionRadiusMiles) {
+export function isTargetInRange(
+  droneCell,
+  targetCell,
+  radiusMiles = getDetectionRadiusMiles('bearing')
+) {
   return cellDistanceMiles(droneCell, targetCell) <= radiusMiles;
 }
 
-export function findTargetsInRange(droneCell, targets, radiusMiles = CONFIG.detectionRadiusMiles) {
+export function findTargetsInRange(
+  droneCell,
+  targets,
+  radiusMiles = getDetectionRadiusMiles('bearing')
+) {
   return targets
     .filter((t) => isTargetInRange(droneCell, t.cell, radiusMiles))
     .sort(
@@ -23,14 +35,11 @@ export function findTargetsInRange(droneCell, targets, radiusMiles = CONFIG.dete
 
 /**
  * Attempt detection and generate readings relative to the drone sensor position.
- * Passive bearings include range-based angular uncertainty (wider arc farther out).
+ * Uses SENSOR_DEFS for range and bearing uncertainty.
  */
 export function attemptDetection(type, droneCell, targets) {
-  const radiusMiles =
-    type === 'range'
-      ? CONFIG.activeDetectionRadiusMiles
-      : CONFIG.detectionRadiusMiles;
-  const inRange = findTargetsInRange(droneCell, targets, radiusMiles);
+  const def = getSensorDef(type);
+  const inRange = findTargetsInRange(droneCell, targets, def.rangeMiles);
   if (inRange.length === 0) {
     return { detected: false, reading: null, effectivenessResults: [] };
   }
@@ -41,10 +50,9 @@ export function attemptDetection(type, droneCell, targets) {
   let value;
   let uncertaintyDeg = null;
 
-  if (type === 'bearing') {
-    // Center of the uncertainty lobe; half-width grows with range (90° arc at max).
+  if (def.readingKind === 'bearing') {
     value = computeBearing(droneCell, closest.cell);
-    uncertaintyDeg = getPassiveBearingHalfWidthDeg(distanceMiles);
+    uncertaintyDeg = getBearingUncertaintyHalfWidthDeg(distanceMiles, type);
   } else {
     value = distanceMiles;
   }

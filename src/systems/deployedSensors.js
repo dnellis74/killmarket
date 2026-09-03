@@ -1,12 +1,50 @@
-import { CONFIG, getDetectionRadiusMiles } from '../config.js';
+/**
+ * Deployed-sensor presentation: animation state + draw/update.
+ * Gameplay properties come from data/sensorDefs.js.
+ */
+import { CONFIG } from '../config.js';
+import { getSensorDef } from '../data/sensorDefs.js';
 import { cellToWorld } from './grid.js';
 
-const BEARING_SWEEP_RATE = 0.045; // degrees per ms
-const BEARING_CYCLE_MS = 360 / BEARING_SWEEP_RATE;
-const RANGE_CYCLE_MS = 2600;
-/** Fallback half-width when a legacy sensor has no uncertaintyDeg. */
-const DEFAULT_BEARING_HALF_WIDTH_DEG = 5;
-export const MAX_CYCLES_WITHOUT_CONTACT = 4;
+/**
+ * Visual / timing knobs per sensor type — not gameplay accuracy or range.
+ * @type {Record<string, {
+ *   color: number,
+ *   markerScale: number,
+ *   pulseFadePerMs: number,
+ *   sweepRateDegPerMs?: number,
+ *   cycleMs?: number,
+ *   pingZoneCellFactor?: number,
+ * }>}
+ */
+const SENSOR_ANIM = {
+  bearing: {
+    color: 0xffcc00,
+    markerScale: 0.28,
+    pulseFadePerMs: 0.0015,
+    sweepRateDegPerMs: 0.045,
+  },
+  range: {
+    color: 0x00ff88,
+    markerScale: 0.28,
+    pulseFadePerMs: 0.0015,
+    cycleMs: 2600,
+    /** Ring ping tolerance as a fraction of cellPx. */
+    pingZoneCellFactor: 0.9,
+  },
+};
+
+function animFor(type) {
+  return SENSOR_ANIM[type] ?? SENSOR_ANIM.bearing;
+}
+
+function cycleMsFor(type) {
+  const anim = animFor(type);
+  if (type === 'bearing') {
+    return 360 / (anim.sweepRateDegPerMs ?? 0.045);
+  }
+  return anim.cycleMs ?? 2600;
+}
 
 function angleDiff(a, b) {
   let d = Math.abs(a - b) % 360;
@@ -18,7 +56,22 @@ function bearingToPhaserRad(bearingDeg, degreesToRadians) {
   return degreesToRadians(bearingDeg) - Math.PI / 2;
 }
 
-/** @typedef {'bearing' | 'range'} DeployedSensorType */
+/** @typedef {import('../data/sensorDefs.js').SensorTypeId} DeployedSensorType */
+
+/**
+ * Animation-only runtime state for a deployed sensor.
+ * @param {DeployedSensorType} type
+ */
+function createSensorAnimState(type) {
+  return {
+    sweepAngle: Math.random() * 360,
+    ringPhase: 0,
+    pulseGlow: 0,
+    wasInPingZone: false,
+    /** @type {{ fade: number, halfWidthDeg?: number }[]} */
+    traces: [],
+  };
+}
 
 /**
  * @param {DeployedSensorType} type
@@ -32,33 +85,29 @@ export function createDeployedSensor(
   readingValue = null,
   uncertaintyDeg = null
 ) {
+  const def = getSensorDef(type);
   return {
     type,
     cell: { ...cell },
     readingValue,
-    /** Passive: half-width of uncertainty arc (full arc = 2×). */
     uncertaintyDeg:
-      type === 'bearing' && readingValue != null
-        ? (uncertaintyDeg ?? DEFAULT_BEARING_HALF_WIDTH_DEG)
+      def.bearingUncertainty && readingValue != null
+        ? (uncertaintyDeg ?? def.bearingUncertainty.minHalfWidthDeg)
         : null,
-    sweepAngle: Math.random() * 360,
-    ringPhase: 0,
-    pulseGlow: 0,
-    wasInPingZone: false,
     elapsedMs: 0,
     markedForRetrieval: false,
     retrievalStarted: false,
-    /** @type {{ fade: number, halfWidthDeg?: number }[]} */
-    traces: [],
+    anim: createSensorAnimState(type),
   };
 }
 
-function cycleMsFor(sensor) {
-  return sensor.type === 'bearing' ? BEARING_CYCLE_MS : RANGE_CYCLE_MS;
-}
-
 function bearingHalfWidth(sensor) {
-  return sensor.uncertaintyDeg ?? DEFAULT_BEARING_HALF_WIDTH_DEG;
+  const def = getSensorDef(sensor.type);
+  return (
+    sensor.uncertaintyDeg ??
+    def.bearingUncertainty?.minHalfWidthDeg ??
+    5
+  );
 }
 
 /**
@@ -67,49 +116,54 @@ function bearingHalfWidth(sensor) {
  */
 export function updateDeployedSensors(sensors, delta) {
   for (const sensor of sensors) {
-    const cycleMs = cycleMsFor(sensor);
+    const def = getSensorDef(sensor.type);
+    const animCfg = animFor(sensor.type);
+    const anim = sensor.anim;
+    const cycleMs = cycleMsFor(sensor.type);
     const milesToPx = CONFIG.cellPx / CONFIG.cellSizeMiles;
-    const maxRadiusPx = getDetectionRadiusMiles(sensor.type) * milesToPx;
+    const maxRadiusPx = def.rangeMiles * milesToPx;
 
     if (sensor.type === 'bearing') {
-      sensor.sweepAngle = (sensor.sweepAngle + delta * BEARING_SWEEP_RATE) % 360;
+      const rate = animCfg.sweepRateDegPerMs ?? 0.045;
+      anim.sweepAngle = (anim.sweepAngle + delta * rate) % 360;
       if (sensor.readingValue != null) {
         const halfWidth = bearingHalfWidth(sensor);
-        const inPingZone =
-          angleDiff(sensor.sweepAngle, sensor.readingValue) < halfWidth;
-        if (inPingZone && !sensor.wasInPingZone) {
-          sensor.traces.push({ fade: 1, halfWidthDeg: halfWidth });
-          sensor.pulseGlow = 1;
+        const inPingZone = angleDiff(anim.sweepAngle, sensor.readingValue) < halfWidth;
+        if (inPingZone && !anim.wasInPingZone) {
+          anim.traces.push({ fade: 1, halfWidthDeg: halfWidth });
+          anim.pulseGlow = 1;
         }
-        sensor.wasInPingZone = inPingZone;
-        if (inPingZone) sensor.pulseGlow = 1;
+        anim.wasInPingZone = inPingZone;
+        if (inPingZone) anim.pulseGlow = 1;
       }
     } else {
-      sensor.ringPhase = (sensor.ringPhase + delta / RANGE_CYCLE_MS) % 1;
+      const rangeCycle = animCfg.cycleMs ?? 2600;
+      anim.ringPhase = (anim.ringPhase + delta / rangeCycle) % 1;
       if (sensor.readingValue != null) {
-        const ringRadius = sensor.ringPhase * maxRadiusPx;
+        const ringRadius = anim.ringPhase * maxRadiusPx;
         const targetPx = sensor.readingValue * milesToPx;
-        const inPingZone = Math.abs(ringRadius - targetPx) < CONFIG.cellPx * 0.9;
-        if (inPingZone && !sensor.wasInPingZone) {
-          sensor.traces.push({ fade: 1 });
-          sensor.pulseGlow = 1;
+        const zone = CONFIG.cellPx * (animCfg.pingZoneCellFactor ?? 0.9);
+        const inPingZone = Math.abs(ringRadius - targetPx) < zone;
+        if (inPingZone && !anim.wasInPingZone) {
+          anim.traces.push({ fade: 1 });
+          anim.pulseGlow = 1;
         }
-        sensor.wasInPingZone = inPingZone;
-        if (inPingZone) sensor.pulseGlow = 1;
+        anim.wasInPingZone = inPingZone;
+        if (inPingZone) anim.pulseGlow = 1;
       }
     }
 
-    for (const trace of sensor.traces) {
+    for (const trace of anim.traces) {
       trace.fade -= delta / cycleMs;
     }
-    sensor.traces = sensor.traces.filter((t) => t.fade > 0);
+    anim.traces = anim.traces.filter((t) => t.fade > 0);
 
-    sensor.pulseGlow = Math.max(0, sensor.pulseGlow - delta * 0.0015);
+    anim.pulseGlow = Math.max(0, anim.pulseGlow - delta * animCfg.pulseFadePerMs);
 
     if (sensor.readingValue == null && !sensor.markedForRetrieval) {
       sensor.elapsedMs += delta;
       const cycles = Math.floor(sensor.elapsedMs / cycleMs);
-      if (cycles >= MAX_CYCLES_WITHOUT_CONTACT) {
+      if (cycles >= def.maxCyclesWithoutContact) {
         sensor.markedForRetrieval = true;
       }
     }
@@ -129,33 +183,27 @@ export function drawDeployedSensors(g, sensors, cellPx, degreesToRadians) {
   for (const sensor of sensors) {
     if (sensor.retrievalStarted) continue;
 
+    const def = getSensorDef(sensor.type);
+    const animCfg = animFor(sensor.type);
     const pos = cellToWorld(sensor.cell);
-    const isBearing = sensor.type === 'bearing';
-    const baseColor = isBearing ? 0xffcc00 : 0x00ff88;
-    const maxRadiusPx = getDetectionRadiusMiles(sensor.type) * milesToPx;
+    const baseColor = animCfg.color;
+    const maxRadiusPx = def.rangeMiles * milesToPx;
+    const markerR = cellPx * animCfg.markerScale;
 
-    drawSensorTraces(
-      g,
-      pos,
-      sensor,
-      maxRadiusPx,
-      milesToPx,
-      degreesToRadians,
-      baseColor
-    );
+    drawSensorTraces(g, pos, sensor, maxRadiusPx, milesToPx, degreesToRadians, baseColor);
 
     g.fillStyle(baseColor, 0.95);
-    g.fillCircle(pos.x, pos.y, cellPx * 0.28);
+    g.fillCircle(pos.x, pos.y, markerR);
     g.lineStyle(1.5, 0xffffff, 0.7);
-    g.strokeCircle(pos.x, pos.y, cellPx * 0.28);
+    g.strokeCircle(pos.x, pos.y, markerR);
 
     g.lineStyle(1, baseColor, 0.2);
     g.strokeCircle(pos.x, pos.y, maxRadiusPx);
 
-    if (isBearing) {
-      drawBearingSensor(g, pos, sensor, maxRadiusPx, degreesToRadians);
+    if (sensor.type === 'bearing') {
+      drawBearingSensor(g, pos, sensor, maxRadiusPx, degreesToRadians, baseColor);
     } else {
-      drawRangeSensor(g, pos, sensor, maxRadiusPx, milesToPx);
+      drawRangeSensor(g, pos, sensor, maxRadiusPx, milesToPx, baseColor);
     }
   }
 }
@@ -203,9 +251,10 @@ function drawBearingArc(
 }
 
 function drawSensorTraces(g, pos, sensor, maxRadiusPx, milesToPx, degreesToRadians, color) {
-  if (sensor.readingValue == null || sensor.traces.length === 0) return;
+  const anim = sensor.anim;
+  if (sensor.readingValue == null || anim.traces.length === 0) return;
 
-  for (const trace of sensor.traces) {
+  for (const trace of anim.traces) {
     const alpha = trace.fade * 0.9;
     if (alpha <= 0) continue;
 
@@ -235,48 +284,50 @@ function drawSensorTraces(g, pos, sensor, maxRadiusPx, milesToPx, degreesToRadia
   }
 }
 
-function drawBearingSensor(g, pos, sensor, maxRadiusPx, degreesToRadians) {
-  const angleRad = bearingToPhaserRad(sensor.sweepAngle, degreesToRadians);
+function drawBearingSensor(g, pos, sensor, maxRadiusPx, degreesToRadians, color) {
+  const anim = sensor.anim;
+  const angleRad = bearingToPhaserRad(anim.sweepAngle, degreesToRadians);
   const endX = pos.x + Math.cos(angleRad) * maxRadiusPx;
   const endY = pos.y + Math.sin(angleRad) * maxRadiusPx;
 
-  g.lineStyle(2, 0xffcc00, 0.55);
+  g.lineStyle(2, color, 0.55);
   g.lineBetween(pos.x, pos.y, endX, endY);
 
-  if (sensor.pulseGlow > 0 && sensor.readingValue != null) {
+  if (anim.pulseGlow > 0 && sensor.readingValue != null) {
     const halfWidth = bearingHalfWidth(sensor);
     drawBearingArc(g, pos, sensor.readingValue, halfWidth, maxRadiusPx, degreesToRadians, {
-      fillColor: 0xffcc00,
-      fillAlpha: sensor.pulseGlow * 0.35,
+      fillColor: color,
+      fillAlpha: anim.pulseGlow * 0.35,
       strokeColor: 0xffffff,
-      strokeAlpha: sensor.pulseGlow * 0.65,
+      strokeAlpha: anim.pulseGlow * 0.65,
       strokeWidth: 3,
     });
-  } else if (sensor.pulseGlow > 0) {
-    g.lineStyle(5, 0xffffff, sensor.pulseGlow * 0.65);
+  } else if (anim.pulseGlow > 0) {
+    g.lineStyle(5, 0xffffff, anim.pulseGlow * 0.65);
     g.lineBetween(pos.x, pos.y, endX, endY);
-    g.fillStyle(0xffcc00, sensor.pulseGlow * 0.35);
+    g.fillStyle(color, anim.pulseGlow * 0.35);
     g.fillCircle(endX, endY, 6);
   }
 }
 
-function drawRangeSensor(g, pos, sensor, maxRadiusPx, milesToPx) {
-  const ringRadius = sensor.ringPhase * maxRadiusPx;
-  const ringAlpha = 0.75 * (1 - sensor.ringPhase * 0.85);
+function drawRangeSensor(g, pos, sensor, maxRadiusPx, milesToPx, color) {
+  const anim = sensor.anim;
+  const ringRadius = anim.ringPhase * maxRadiusPx;
+  const ringAlpha = 0.75 * (1 - anim.ringPhase * 0.85);
 
-  g.lineStyle(2.5, 0x00ff88, ringAlpha);
+  g.lineStyle(2.5, color, ringAlpha);
   g.strokeCircle(pos.x, pos.y, ringRadius);
 
   if (ringRadius > 2) {
-    g.lineStyle(1, 0x00ff88, ringAlpha * 0.35);
+    g.lineStyle(1, color, ringAlpha * 0.35);
     g.strokeCircle(pos.x, pos.y, ringRadius * 0.92);
   }
 
-  if (sensor.pulseGlow > 0 && sensor.readingValue != null) {
+  if (anim.pulseGlow > 0 && sensor.readingValue != null) {
     const pulseR = sensor.readingValue * milesToPx;
-    g.lineStyle(4, 0xffffff, sensor.pulseGlow * 0.75);
+    g.lineStyle(4, 0xffffff, anim.pulseGlow * 0.75);
     g.strokeCircle(pos.x, pos.y, pulseR);
-    g.fillStyle(0x00ff88, sensor.pulseGlow * 0.2);
+    g.fillStyle(color, anim.pulseGlow * 0.2);
     g.fillCircle(pos.x, pos.y, pulseR);
   }
 }

@@ -44,7 +44,7 @@ import {
   radiansToDegrees,
   degreesToRadians,
 } from '../systems/ballistics.js';
-import { speakVisualContact } from '../systems/speech.js';
+import { speakVisualContact, speakTargetNeutralized, speakMissionComplete, speakBudgetExhausted } from '../systems/speech.js';
 import {
   createDeployedSensor,
   updateDeployedSensors,
@@ -663,6 +663,7 @@ export default class MapScene extends Phaser.Scene {
         if (effectiveness === EFFECTIVENESS.COMBAT_INEFFECTIVE) {
           if (confirmKillViaSensor(target)) {
             trackKillConfirmed(target.contractValue);
+            speakTargetNeutralized();
             contractsPaid++;
             payoutTotal += target.contractValue;
             addReading(
@@ -682,6 +683,7 @@ export default class MapScene extends Phaser.Scene {
       const missionComplete = checkMissionComplete();
       if (missionComplete) {
         trackMissionComplete(getScore());
+        speakMissionComplete();
         message += ' — All targets destroyed';
       }
 
@@ -714,7 +716,7 @@ export default class MapScene extends Phaser.Scene {
         updateDrone(drone.id, { status: 'complete' });
         this.isDeployingDrone = false;
         if (!getState().missionCompleteReported) {
-          checkBankruptcy();
+          if (checkBankruptcy()) speakBudgetExhausted();
         }
         this.updateUI();
       },
@@ -812,7 +814,7 @@ export default class MapScene extends Phaser.Scene {
     if (!elevationResult.valid) {
       this.showMessage(elevationResult.message);
       this.isAnimatingFire = false;
-      checkBankruptcy();
+      if (checkBankruptcy()) speakBudgetExhausted();
       this.updateUI();
       return;
     }
@@ -898,6 +900,9 @@ export default class MapScene extends Phaser.Scene {
         let message = 'Fire mission complete.';
         if (isHit) {
           const { target, contractPaid } = markTargetHitAtCell(aimCell);
+          if (target) {
+            speakTargetNeutralized();
+          }
           if (contractPaid && target) {
             addReading(
               createReading('contract', target.contractValue, aimCell, target.id)
@@ -911,9 +916,10 @@ export default class MapScene extends Phaser.Scene {
         const missionComplete = checkMissionComplete();
         if (missionComplete) {
           trackMissionComplete(getScore());
+          speakMissionComplete();
           message += ' All targets destroyed — mission complete!';
-        } else {
-          checkBankruptcy();
+        } else if (checkBankruptcy()) {
+          speakBudgetExhausted();
         }
         this.showMessage(message, missionComplete ? 8000 : 4000);
         this.isAnimatingFire = false;
@@ -1050,9 +1056,9 @@ export default class MapScene extends Phaser.Scene {
       trackGameOverMoney();
       gameOverEl.classList.remove('hidden');
       gameOverEl.classList.remove('victory');
-      ui('game-over-title').textContent = 'Game Over';
+      ui('game-over-title').textContent = 'Budget Exhausted';
       ui('game-over-message').textContent =
-        'Out of money. Target locations revealed on map.';
+        'Target locations revealed on map.';
       this.revealTargets();
     } else {
       gameOverEl.classList.add('hidden');

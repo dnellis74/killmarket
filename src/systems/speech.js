@@ -5,10 +5,20 @@
 
 const VOICE_ID = 'en/en-us';
 
+const SPEAK_OPTS = {
+  amplitude: 100,
+  pitch: 45,
+  speed: 160,
+  wordgap: 1,
+  variant: 'm3',
+};
+
 /** @type {boolean} */
 let voiceReady = false;
+/** @type {boolean} */
+let speaking = false;
 /** @type {string[]} */
-const pending = [];
+const queue = [];
 
 function getMeSpeak() {
   return typeof window !== 'undefined' ? window.meSpeak : undefined;
@@ -16,7 +26,6 @@ function getMeSpeak() {
 
 /**
  * Load the US English voice. Safe to call once at startup.
- * Queued utterances flush when the voice is ready.
  */
 export function initSpeech() {
   const meSpeak = getMeSpeak();
@@ -27,7 +36,7 @@ export function initSpeech() {
 
   if (meSpeak.isVoiceLoaded?.(VOICE_ID)) {
     voiceReady = true;
-    flushPending();
+    pumpQueue();
     return;
   }
 
@@ -38,52 +47,55 @@ export function initSpeech() {
     }
     voiceReady = true;
     meSpeak.setDefaultVoice?.(VOICE_ID);
-    flushPending();
+    pumpQueue();
   });
 }
 
-function flushPending() {
+function pumpQueue() {
   const meSpeak = getMeSpeak();
-  if (!meSpeak || !voiceReady) return;
-  while (pending.length > 0) {
-    const text = pending.shift();
-    speakNow(text);
-  }
-}
+  if (!meSpeak || !voiceReady || speaking) return;
+  const text = queue.shift();
+  if (!text) return;
 
-function speakNow(text) {
-  const meSpeak = getMeSpeak();
-  if (!meSpeak) return;
+  speaking = true;
   try {
-    meSpeak.speak(text, {
-      amplitude: 100,
-      pitch: 45,
-      speed: 160,
-      wordgap: 1,
-      variant: 'm3',
+    meSpeak.speak(text, SPEAK_OPTS, () => {
+      speaking = false;
+      pumpQueue();
     });
   } catch (err) {
+    speaking = false;
     console.warn('[speech] speak failed', err);
+    pumpQueue();
   }
 }
 
 /**
- * Speak arbitrary text once the voice is ready (queues if still loading).
+ * Speak arbitrary text once the voice is ready (queues so lines play in order).
  * @param {string} text
  */
 export function speak(text) {
   if (!text) return;
-  if (!voiceReady) {
-    pending.push(text);
-    return;
-  }
-  speakNow(text);
+  queue.push(text);
+  pumpQueue();
 }
 
-/**
- * Radio callout when a target is visually spotted.
- * @param {{ x: number, y: number }} cell
- */
+/** Radio callout when a target is visually spotted. */
 export function speakVisualContact(cell) {
-  speak(`target visual at ${cell.x}, ${cell.y}`);
+  speak(`visual contact with target at ${cell.x}, ${cell.y}`);
+}
+
+/** Radio callout when a target kill is confirmed / paid. */
+export function speakTargetNeutralized() {
+  speak('target neutralized');
+}
+
+/** Radio callout on mission victory. */
+export function speakMissionComplete() {
+  speak('mission complete. request retrieval');
+}
+
+/** Radio callout when the player runs out of money. */
+export function speakBudgetExhausted() {
+  speak('budget exhausted');
 }
