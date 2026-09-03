@@ -14,11 +14,10 @@ import {
   getMoney,
   getContractSummary,
   getTargets,
-  markTargetHitAtCell,
+  applyMunitionImpact,
   confirmKillViaSensor,
   checkMissionComplete,
   checkBankruptcy,
-  findTargetAtCell,
   isVictory,
   revealTargetVisually,
 } from '../state/gameState.js';
@@ -44,12 +43,14 @@ import {
   radiansToDegrees,
   degreesToRadians,
 } from '../systems/ballistics.js';
+import { DEFAULT_MUNITION_ID, getMunitionDef } from '../data/munitionDefs.js';
 import { speakVisualContact, speakTargetNeutralized, speakMissionComplete, speakBudgetExhausted } from '../systems/speech.js';
 import {
   createDeployedSensor,
   updateDeployedSensors,
   drawDeployedSensors,
 } from '../systems/deployedSensors.js';
+import { createCrater, drawCraters } from '../systems/craters.js';
 import {
   trackGameStart,
   trackDroneDeploy,
@@ -112,6 +113,7 @@ export default class MapScene extends Phaser.Scene {
     this.targetMarkers = [];
     this.spottedTargetMarkers = [];
     this.deployedSensors = [];
+    this.craters = [];
   }
 
   preload() {
@@ -133,6 +135,7 @@ export default class MapScene extends Phaser.Scene {
     this.targetMarkers = [];
     this.spottedTargetMarkers = [];
     this.deployedSensors = [];
+    this.craters = [];
     this.logEntries = [];
 
     this.aerialMaskCanvas = document.createElement('canvas');
@@ -173,6 +176,7 @@ export default class MapScene extends Phaser.Scene {
     this.setupInput();
     this.setupUI();
     this.readingGraphics = this.add.graphics().setDepth(5);
+    this.craterGraphics = this.add.graphics().setDepth(6.5);
     this.deployedSensorGraphics = this.add.graphics().setDepth(7);
 
     this.layoutMapOverlay();
@@ -819,13 +823,11 @@ export default class MapScene extends Phaser.Scene {
       return;
     }
 
-    const hitTarget = findTargetAtCell(aimCell);
-    const isHit = hitTarget !== null;
     const elevationDeg = radiansToDegrees(elevationResult.elevationRadians);
-    this.animateFire(bearing, elevationDeg, distanceMiles, isHit, aimCell);
+    this.animateFire(bearing, elevationDeg, distanceMiles, aimCell);
   }
 
-  animateFire(bearingDeg, elevationDeg, distanceMiles, isHit, aimCell) {
+  animateFire(bearingDeg, elevationDeg, distanceMiles, aimCell) {
     const playerPos = cellToWorld(getState().playerCell);
     const milesToPx = cellPx / CONFIG.cellSizeMiles;
     const targetDistPx = distanceMiles * milesToPx;
@@ -854,14 +856,14 @@ export default class MapScene extends Phaser.Scene {
           },
           onComplete: () => {
             // Phase 3: fire projectile arc
-            this.fireProjectile(playerPos, bearingRad, elevationDeg, targetDistPx, isHit, aimCell);
+            this.fireProjectile(playerPos, bearingRad, elevationDeg, targetDistPx, aimCell);
           },
         });
       },
     });
   }
 
-  fireProjectile(startPos, bearingRad, elevationDeg, targetDistPx, isHit, aimCell) {
+  fireProjectile(startPos, bearingRad, elevationDeg, targetDistPx, aimCell) {
     const projectile = this.add.circle(startPos.x, startPos.y, 4, 0xff2200).setDepth(15);
     const endX = startPos.x + Math.sin(bearingRad) * targetDistPx;
     const endY = startPos.y - Math.cos(bearingRad) * targetDistPx;
@@ -897,22 +899,37 @@ export default class MapScene extends Phaser.Scene {
         });
         projectile.destroy();
 
-        let message = 'Fire mission complete.';
-        if (isHit) {
-          const { target, contractPaid } = markTargetHitAtCell(aimCell);
-          if (target) {
-            speakTargetNeutralized();
-          }
-          if (contractPaid && target) {
-            addReading(
-              createReading('contract', target.contractValue, aimCell, target.id)
-            );
-            trackKillConfirmed(target.contractValue);
-            message += ` ${formatMoney(target.contractValue)} contract awarded.`;
-          }
+        const munition = getMunitionDef(DEFAULT_MUNITION_ID);
+        this.craters.push(createCrater(aimCell, munition));
+        drawCraters(this.craterGraphics, this.craters, cellPx);
+
+        const { results } = applyMunitionImpact(aimCell, munition.id);
+        const hit = results.length > 0;
+        const neutralized = results.filter((r) => r.neutralized);
+        const paid = results.filter((r) => r.contractPaid);
+
+        for (const r of neutralized) {
+          speakTargetNeutralized();
         }
+        for (const r of paid) {
+          addReading(
+            createReading('contract', r.target.contractValue, aimCell, r.target.id)
+          );
+          trackKillConfirmed(r.target.contractValue);
+        }
+
+        let message = `Fire mission complete (${munition.shortLabel}).`;
+        if (paid.length === 1) {
+          message += ` ${formatMoney(paid[0].target.contractValue)} contract awarded.`;
+        } else if (paid.length > 1) {
+          const total = paid.reduce((s, r) => s + r.target.contractValue, 0);
+          message += ` ${formatMoney(total)} contracts awarded.`;
+        } else if (!hit) {
+          message += ' No effect.';
+        }
+
         addReading(createReading('fire', 0, aimCell));
-        trackFireMissionComplete(aimCell, isHit);
+        trackFireMissionComplete(aimCell, hit);
         const missionComplete = checkMissionComplete();
         if (missionComplete) {
           trackMissionComplete(getScore());

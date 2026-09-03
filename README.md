@@ -88,6 +88,15 @@ Gameplay properties (range, bearing uncertainty, empty-cycle retrieval) are **da
 | `bearingUncertainty` | min 5° / max 45° half-width | — |
 | `maxCyclesWithoutContact` | 4 | 4 |
 
+### Munitions (`src/data/munitionDefs.js`)
+
+The artillery fires a data-driven round (currently **HE**). Burst is Chebyshev distance in grid squares.
+
+| Def field | AP | HE (fired) |
+|-----------|----|------------|
+| `burstRadiusCells` | 0 (impact cell only) | 1 (3×3 including impact) |
+| `damageFraction` | 1 | 1 |
+
 ## Combat Effectiveness (SALUTE)
 
 Targets carry an effectiveness status reported by drone sensors on detection:
@@ -99,7 +108,7 @@ Targets carry an effectiveness status reported by drone sensors on detection:
 | `ineffective` | Ineffective (Red) | 50%–69% |
 | `combat_ineffective` | Combat Ineffective (Black) | <50% |
 
-Current rules: detected untouched units report **Fully Effective**; fire hits set the target to **Combat Ineffective**. Payout timing depends on each contract's `verificationRequired` flag.
+Current rules: detected units report SALUTE from remaining **integrity** (untouched = Fully Effective). The base fires **HE** (`src/data/munitionDefs.js`): 1-square burst, 100% damage. Payout timing depends on each contract's `verificationRequired` flag.
 
 ## Project Structure
 
@@ -109,6 +118,7 @@ src/
   analytics.js             — GameAnalytics init and event helpers
   config.js                — Economy, map, ballistics constants
   data/sensorDefs.js       — Data-driven sensor range / accuracy / retrieval
+  data/munitionDefs.js     — Data-driven artillery round (burst, damage)
   style.css                — UI overlay styles (phone-first layout)
   scenes/MapScene.js       — Grid, camera, player, drones, UI, fire animation
   systems/grid.js          — Cell/world coordinate conversion, bearing, distance
@@ -117,6 +127,7 @@ src/
   systems/effectiveness.js — SALUTE effectiveness levels and helpers
   systems/ballistics.js    — Elevation formula and unit conversion
   systems/fogOfWar.js      — Revealed cells, fog clearing on travel and scan
+  systems/craters.js       — Persistent HE/AP impact crater drawing
   systems/deployedSensors.js — Deployed sensor animation only (sweep / ring / traces)
   systems/speech.js        — meSpeak.js TTS (visual contact callouts)
   state/gameState.js       — Money, contracts, readings, targets, drone registry

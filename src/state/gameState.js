@@ -1,5 +1,9 @@
 import { CONFIG } from '../config.js';
-import { EFFECTIVENESS } from '../systems/effectiveness.js';
+import { DEFAULT_MUNITION_ID, getMunitionDef, isCellInBurst } from '../data/munitionDefs.js';
+import {
+  EFFECTIVENESS,
+  effectivenessFromIntegrity,
+} from '../systems/effectiveness.js';
 import { initRevealedCells, isRevealed } from '../systems/fogOfWar.js';
 
 let state = null;
@@ -30,6 +34,8 @@ function createTarget(cell, contract) {
     contractValue: contract.value,
     verificationRequired: contract.verificationRequired,
     contractStatus: 'active',
+    /** Remaining combat power 0–1; munitions subtract damageFraction. */
+    integrity: 1,
     effectiveness: null,
     killConfirmed: false,
     visuallyRevealed: false,
@@ -176,14 +182,39 @@ export function createDrone(type, targetCell) {
   };
 }
 
-/** Apply kinetic effect — marks target destroyed; pays contract if none required. */
-export function markTargetHitAtCell(aimCell) {
-  const target = findTargetAtCell(aimCell);
-  if (!target) return { target: null, contractPaid: false };
-  target.effectiveness = EFFECTIVENESS.COMBAT_INEFFECTIVE;
-  const contractPaid =
-    !target.verificationRequired && awardContractPayout(target);
-  return { target, contractPaid };
+/**
+ * Apply a munition at an impact cell using that round's burst and damage.
+ * Default HE: 1-square Chebyshev burst. AP: impact cell only.
+ *
+ * @param {{ x: number, y: number }} impactCell
+ * @param {string} [munitionId]
+ * @returns {{
+ *   munition: ReturnType<typeof getMunitionDef>,
+ *   results: { target: object, neutralized: boolean, contractPaid: boolean }[],
+ * }}
+ */
+export function applyMunitionImpact(impactCell, munitionId = DEFAULT_MUNITION_ID) {
+  const munition = getMunitionDef(munitionId);
+  const affected = getTargets().filter((t) =>
+    isCellInBurst(impactCell, t.cell, munition.burstRadiusCells)
+  );
+
+  const results = affected.map((target) => {
+    const wasCI =
+      target.effectiveness === EFFECTIVENESS.COMBAT_INEFFECTIVE ||
+      target.integrity < 0.5;
+    target.integrity = Math.max(0, target.integrity - munition.damageFraction);
+    target.effectiveness = effectivenessFromIntegrity(target.integrity);
+    const nowCI = target.effectiveness === EFFECTIVENESS.COMBAT_INEFFECTIVE;
+    const neutralized = nowCI && !wasCI;
+    const contractPaid =
+      neutralized && !target.verificationRequired
+        ? awardContractPayout(target)
+        : false;
+    return { target, neutralized, contractPaid };
+  });
+
+  return { munition, results };
 }
 
 function awardContractPayout(target) {

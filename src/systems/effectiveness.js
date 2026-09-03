@@ -41,6 +41,19 @@ export const EFFECTIVENESS_LEVELS = [
 const levelById = Object.fromEntries(EFFECTIVENESS_LEVELS.map((l) => [l.id, l]));
 
 /**
+ * Map remaining integrity (0–1) onto SALUTE bands.
+ * @param {number} integrity
+ * @returns {string}
+ */
+export function effectivenessFromIntegrity(integrity) {
+  const pct = Math.max(0, Math.min(1, integrity)) * 100;
+  if (pct >= 85) return EFFECTIVENESS.FULLY_EFFECTIVE;
+  if (pct >= 70) return EFFECTIVENESS.MARGINALLY_EFFECTIVE;
+  if (pct >= 50) return EFFECTIVENESS.INEFFECTIVE;
+  return EFFECTIVENESS.COMBAT_INEFFECTIVE;
+}
+
+/**
  * Display metadata for an effectiveness level.
  * @param {string | null | undefined} level
  * @returns {{ id: string, label: string, color: string, percentRange: string, description: string } | null}
@@ -51,12 +64,14 @@ export function getEffectivenessDisplay(level) {
 }
 
 /**
- * Effectiveness reported by a sensor on detection.
- * Hit targets report combat ineffective; untouched targets report fully effective.
+ * Effectiveness reported by a sensor on detection, from remaining integrity.
  * @param {{ effectiveness: string | null }} target
  * @returns {string}
  */
 export function getReportedEffectiveness(target) {
+  if (typeof target.integrity === 'number') {
+    return effectivenessFromIntegrity(target.integrity);
+  }
   if (target.effectiveness === EFFECTIVENESS.COMBAT_INEFFECTIVE) {
     return EFFECTIVENESS.COMBAT_INEFFECTIVE;
   }
