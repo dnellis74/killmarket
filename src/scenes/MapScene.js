@@ -44,6 +44,7 @@ import {
   radiansToDegrees,
   degreesToRadians,
 } from '../systems/ballistics.js';
+import { speakVisualContact } from '../systems/speech.js';
 import {
   createDeployedSensor,
   updateDeployedSensors,
@@ -245,6 +246,7 @@ export default class MapScene extends Phaser.Scene {
       if (!isTargetInRange(centerCell, target.cell, radiusMiles)) continue;
       if (!revealTargetVisually(target.id)) continue;
       this.createSpottedMarker(target);
+      speakVisualContact(target.cell);
       this.showMessage(
         `Visual contact: enemy at (${target.cell.x}, ${target.cell.y})`
       );

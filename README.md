@@ -111,8 +111,19 @@ src/
   systems/ballistics.js    — Elevation formula and unit conversion
   systems/fogOfWar.js      — Revealed cells, fog clearing on travel and scan
   systems/deployedSensors.js — Left-behind sensor sweep and pulse animations
+  systems/speech.js        — meSpeak.js TTS (visual contact callouts)
   state/gameState.js       — Money, contracts, readings, targets, drone registry
+public/
+  mespeak/                 — Vendored meSpeak.js 2.0.7 + en-us voice (GPL-3.0)
 ```
+
+## Speech (meSpeak.js)
+
+Killmarket uses [meSpeak.js](https://www.masswerk.at/mespeak/) for radio-style callouts. Assets are vendored under `public/mespeak/` (GPL-3.0; see `public/mespeak/License.txt`).
+
+Currently spoken:
+- **Visual contact** — `tally opfor at {x}, {y}` when a drone first spots a target in visual range
+
 
 ## Analytics (GameAnalytics)
 
